@@ -1,0 +1,181 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
+import { createClient } from "@/utils/supabase/client";
+
+export default function DepartmentGoalPage() {
+  const [supabase] = useState(() => createClient());
+  const params = useParams();
+  const router = useRouter();
+  const departmentId = params.id as string;
+
+  const [month, setMonth] = useState("2026-08");
+  const [sales, setSales] = useState("");
+  const [champagne, setChampagne] = useState("");
+  const [visits, setVisits] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    loadGoal();
+  }, [departmentId, month]);
+
+  async function loadGoal() {
+    setLoading(true);
+
+    const targetMonth = `${month}-01`;
+
+    const { data } = await supabase
+      .from("department_goals")
+      .select("*")
+      .eq("department_id", departmentId)
+      .eq("target_month", targetMonth)
+      .maybeSingle();
+
+    if (data) {
+      setSales(String(data.target_sales ?? ""));
+      setChampagne(String(data.champagne_target ?? ""));
+      setVisits(String(data.visit_count_target ?? ""));
+    } else {
+      setSales("");
+      setChampagne("");
+      setVisits("");
+    }
+
+    setLoading(false);
+  }
+
+  async function saveGoal() {
+    setSaving(true);
+
+    const targetMonth = `${month}-01`;
+
+    const { data: existing } = await supabase
+      .from("department_goals")
+      .select("id")
+      .eq("department_id", departmentId)
+      .eq("target_month", targetMonth)
+      .maybeSingle();
+
+    const values = {
+      department_id: departmentId,
+      target_month: targetMonth,
+      target_sales: Number(sales || 0),
+      champagne_target: Number(champagne || 0),
+      visit_count_target: Number(visits || 0),
+    };
+
+    let error;
+
+    if (existing) {
+      const result = await supabase
+        .from("department_goals")
+        .update(values)
+        .eq("id", existing.id);
+
+      error = result.error;
+    } else {
+      const result = await supabase
+        .from("department_goals")
+        .insert(values);
+
+      error = result.error;
+    }
+
+    setSaving(false);
+
+    if (error) {
+      alert(`保存に失敗しました\n${error.message}`);
+      return;
+    }
+
+    alert("営業部目標を保存しました");
+    router.push(`/departments/${departmentId}`);
+  }
+
+  return (
+    <main className="min-h-screen bg-black text-white px-5 py-8">
+      <div className="mx-auto max-w-md">
+
+        <button
+          onClick={() => router.back()}
+          className="text-sm text-zinc-500"
+        >
+          ← 営業部へ戻る
+        </button>
+
+        <p className="mt-8 text-xs tracking-widest text-zinc-500">
+          DEPARTMENT GOAL SETTING
+        </p>
+
+        <h1 className="mt-2 text-3xl font-bold">
+          営業部目標設定
+        </h1>
+
+        <div className="mt-8 space-y-5">
+
+          <div>
+            <label className="text-xs text-zinc-500">
+              対象月
+            </label>
+            <input
+              type="month"
+              value={month}
+              onChange={(e) => setMonth(e.target.value)}
+              className="mt-2 w-full rounded-2xl border border-zinc-800 bg-zinc-950 p-4"
+            />
+          </div>
+
+          <div>
+            <label className="text-xs text-zinc-500">
+              営業部売上目標
+            </label>
+            <input
+              type="number"
+              value={sales}
+              onChange={(e) => setSales(e.target.value)}
+              placeholder="例：50000000"
+              className="mt-2 w-full rounded-2xl border border-zinc-800 bg-zinc-950 p-4 text-xl font-bold"
+            />
+          </div>
+
+          <div>
+            <label className="text-xs text-zinc-500">
+              オリシャン目標
+            </label>
+            <input
+              type="number"
+              value={champagne}
+              onChange={(e) => setChampagne(e.target.value)}
+              placeholder="例：100"
+              className="mt-2 w-full rounded-2xl border border-zinc-800 bg-zinc-950 p-4 text-xl font-bold"
+            />
+          </div>
+
+          <div>
+            <label className="text-xs text-zinc-500">
+              来店組数目標
+            </label>
+            <input
+              type="number"
+              value={visits}
+              onChange={(e) => setVisits(e.target.value)}
+              placeholder="例：300"
+              className="mt-2 w-full rounded-2xl border border-zinc-800 bg-zinc-950 p-4 text-xl font-bold"
+            />
+          </div>
+
+          <button
+            onClick={saveGoal}
+            disabled={saving || loading}
+            className="w-full rounded-2xl bg-white py-4 font-bold text-black disabled:opacity-50"
+          >
+            {saving ? "保存中..." : "営業部目標を保存"}
+          </button>
+
+        </div>
+      </div>
+    </main>
+  );
+}

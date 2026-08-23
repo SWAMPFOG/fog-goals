@@ -1,0 +1,712 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { useParams, useRouter } from "next/navigation";
+import { createClient } from "@/utils/supabase/client";
+
+type Team = {
+  id: string;
+  name: string;
+};
+
+type Member = {
+  id: string;
+  name: string;
+  display_order: number;
+};
+
+type DailyResult = {
+  member_id: string;
+  sales: number | null;
+  champagne_count: number | null;
+  visit_count: number | null;
+};
+
+type TeamGoal = {
+  id: string;
+  target_sales: number;
+  champagne_target: number;
+  visit_count_target: number;
+};
+
+function currentMonth() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function yen(value: number) {
+  return `¥${value.toLocaleString("ja-JP")}`;
+}
+
+function rate(current: number, target: number) {
+  if (target <= 0) return 0;
+  return Math.min(100, Math.round((current / target) * 100));
+}
+
+export default function TeamDetailPage() {
+  const params = useParams();
+  const router = useRouter();
+  const teamId = params.id as string;
+
+  const [supabase] = useState(() => createClient());
+
+  const [team, setTeam] = useState<Team | null>(null);
+  const [members, setMembers] = useState<Member[]>([]);
+  const [results, setResults] = useState<DailyResult[]>([]);
+  const [goal, setGoal] = useState<TeamGoal | null>(null);
+
+  const [memberGoals, setMemberGoals] = useState<
+    {
+      member_id: string;
+      target_sales: number | null;
+      champagne_target: number | null;
+      visit_count_target: number | null;
+    }[]
+  >([]);
+
+  const [month, setMonth] = useState(currentMonth());
+  const [targetSales, setTargetSales] = useState("");
+  const [champagneTarget, setChampagneTarget] = useState("");
+  const [visitTarget, setVisitTarget] = useState("");
+
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
+
+  useEffect(() => {
+    async function load() {
+      setLoading(true);
+      setErrorMessage("");
+
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        router.replace("/login");
+        return;
+      }
+
+      const targetMonth = `${month}-01`;
+
+      const [year, monthNumber] = month.split("-").map(Number);
+      const nextDate = new Date(year, monthNumber, 1);
+      const nextMonth = `${nextDate.getFullYear()}-${String(
+        nextDate.getMonth() + 1
+      ).padStart(2, "0")}-01`;
+
+      const [
+        teamResult,
+        membersResult,
+        dailyResult,
+        goalResult,
+      ] = await Promise.all([
+        supabase
+          .from("teams")
+          .select("id, name")
+          .eq("id", teamId)
+          .eq("is_active", true)
+          .single(),
+
+        supabase
+          .from("members")
+          .select("id, name, display_order")
+          .eq("team_id", teamId)
+          .eq("is_active", true)
+          .order("display_order"),
+
+        supabase
+          .from("daily_results")
+          .select("member_id, sales, champagne_count, visit_count")
+          .eq("team_id", teamId)
+          .gte("business_date", targetMonth)
+          .lt("business_date", nextMonth),
+
+        supabase
+          .from("team_goals")
+          .select(
+            "id, target_sales, champagne_target, visit_count_target"
+          )
+          .eq("team_id", teamId)
+          .eq("target_month", targetMonth)
+          .maybeSingle(),
+      ]);
+
+      if (teamResult.error) {
+        setErrorMessage(teamResult.error.message);
+        setLoading(false);
+        return;
+      }
+
+      if (membersResult.error) {
+        setErrorMessage(membersResult.error.message);
+        setLoading(false);
+        return;
+      }
+
+      if (dailyResult.error) {
+        setErrorMessage(dailyResult.error.message);
+        setLoading(false);
+        return;
+      }
+
+      if (goalResult.error) {
+        setErrorMessage(goalResult.error.message);
+        setLoading(false);
+        return;
+      }
+
+      setTeam(teamResult.data);
+      setMembers(membersResult.data ?? []);
+      setResults(dailyResult.data ?? []);
+
+      const { data: memberGoalData, error: memberGoalError } =
+        await supabase
+          .from("monthly_goals")
+          .select(
+            "member_id, target_sales, champagne_target, visit_count_target"
+          )
+          .eq("team_id", teamId)
+          .eq("target_month", targetMonth);
+
+      if (memberGoalError) {
+        setErrorMessage(memberGoalError.message);
+        setLoading(false);
+        return;
+      }
+
+      setMemberGoals(memberGoalData ?? []);
+
+      if (goalResult.data) {
+        setGoal(goalResult.data);
+        setTargetSales(String(goalResult.data.target_sales ?? 0));
+        setChampagneTarget(
+          String(goalResult.data.champagne_target ?? 0)
+        );
+        setVisitTarget(
+          String(goalResult.data.visit_count_target ?? 0)
+        );
+      } else {
+        setGoal(null);
+        setTargetSales("");
+        setChampagneTarget("");
+        setVisitTarget("");
+      }
+
+      setLoading(false);
+    }
+
+    if (teamId) load();
+  }, [teamId, month, router, supabase]);
+
+  const totals = useMemo(() => {
+    return results.reduce(
+      (sum, row) => ({
+        sales: sum.sales + Number(row.sales ?? 0),
+        champagne:
+          sum.champagne + Number(row.champagne_count ?? 0),
+        visits: sum.visits + Number(row.visit_count ?? 0),
+      }),
+      {
+        sales: 0,
+        champagne: 0,
+        visits: 0,
+      }
+    );
+  }, [results]);
+
+  const salesTarget = goal?.target_sales ?? 0;
+  const champagneGoal = goal?.champagne_target ?? 0;
+  const visitGoal = goal?.visit_count_target ?? 0;
+
+  const memberGoalTotals = useMemo(() => {
+    return memberGoals.reduce(
+      (sum, row) => ({
+        sales: sum.sales + Number(row.target_sales ?? 0),
+        champagne:
+          sum.champagne + Number(row.champagne_target ?? 0),
+        visits:
+          sum.visits + Number(row.visit_count_target ?? 0),
+      }),
+      {
+        sales: 0,
+        champagne: 0,
+        visits: 0,
+      }
+    );
+  }, [memberGoals]);
+
+  const unallocatedSales = Math.max(
+    0,
+    salesTarget - memberGoalTotals.sales
+  );
+
+  const unallocatedChampagne = Math.max(
+    0,
+    champagneGoal - memberGoalTotals.champagne
+  );
+
+  const unallocatedVisits = Math.max(
+    0,
+    visitGoal - memberGoalTotals.visits
+  );
+
+  async function saveGoal() {
+    setSaving(true);
+    setMessage("");
+    setErrorMessage("");
+
+    const payload = {
+      team_id: teamId,
+      target_month: `${month}-01`,
+      target_sales: Number(targetSales || 0),
+      champagne_target: Number(champagneTarget || 0),
+      visit_count_target: Number(visitTarget || 0),
+      updated_at: new Date().toISOString(),
+    };
+
+    const { data, error } = await supabase
+      .from("team_goals")
+      .upsert(payload, {
+        onConflict: "team_id,target_month",
+      })
+      .select(
+        "id, target_sales, champagne_target, visit_count_target"
+      )
+      .single();
+
+    if (error) {
+      setErrorMessage(error.message);
+      setSaving(false);
+      return;
+    }
+
+    setGoal(data);
+    setMessage("保存しました");
+    setEditing(false);
+    setSaving(false);
+  }
+
+  if (loading) {
+    return (
+      <main className="min-h-screen bg-black text-white flex items-center justify-center">
+        <p className="text-zinc-500">読み込み中...</p>
+      </main>
+    );
+  }
+
+  return (
+    <main className="min-h-screen bg-black text-white pb-24">
+      <div className="mx-auto w-full max-w-md px-5 pt-8">
+        <Link
+          href="/teams"
+          className="text-sm text-zinc-500"
+        >
+          ← チーム一覧
+        </Link>
+
+        <header className="mt-6 mb-6">
+          <p className="text-xs tracking-[0.3em] text-zinc-500">
+            SWAMP-FOG
+          </p>
+
+          <h1 className="mt-2 text-3xl font-bold">
+            {team?.name ?? "TEAM"}
+          </h1>
+
+          <p className="mt-1 text-sm text-zinc-500">
+            TEAM GOAL
+          </p>
+        </header>
+
+        <label className="block mb-4">
+          <span className="text-xs text-zinc-500">
+            対象月
+          </span>
+
+          <input
+            type="month"
+            value={month}
+            onChange={(e) => setMonth(e.target.value)}
+            className="mt-2 w-full rounded-2xl border border-zinc-800 bg-black px-4 py-3 text-white"
+          />
+        </label>
+
+        {errorMessage && (
+          <section className="mb-4 rounded-2xl border border-red-900 p-4">
+            <p className="text-sm text-red-400">
+              ERROR: {errorMessage}
+            </p>
+          </section>
+        )}
+
+        <section className="rounded-3xl border border-zinc-800 bg-zinc-950 p-5">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs text-zinc-500">
+                チーム売上目標
+              </p>
+              <p className="mt-2 text-3xl font-bold">
+                {goal ? yen(salesTarget) : "未設定"}
+              </p>
+            </div>
+
+            <button
+              onClick={() => setEditing(!editing)}
+              className="rounded-xl border border-zinc-700 px-3 py-2 text-xs"
+            >
+              {editing ? "閉じる" : "目標設定"}
+            </button>
+          </div>
+
+          <div className="mt-5 h-2 overflow-hidden rounded-full bg-zinc-800">
+            <div
+              className="h-full bg-white"
+              style={{
+                width: `${rate(totals.sales, salesTarget)}%`,
+              }}
+            />
+          </div>
+
+          <div className="mt-3 flex justify-between text-xs text-zinc-500">
+            <span>現在 {yen(totals.sales)}</span>
+            <span>
+              達成率 {rate(totals.sales, salesTarget)}%
+            </span>
+          </div>
+
+          <p className="mt-4 text-sm text-zinc-400">
+            残り {yen(Math.max(0, salesTarget - totals.sales))}
+          </p>
+        </section>
+
+        <section className="mt-3 grid grid-cols-2 gap-3">
+          <div className="rounded-3xl border border-zinc-800 bg-zinc-950 p-4">
+            <p className="text-xs text-zinc-500">
+              オリシャン目標
+            </p>
+            <p className="mt-2 text-2xl font-bold">
+              {goal ? `${champagneGoal}本` : "未設定"}
+            </p>
+            <p className="mt-3 text-xs text-zinc-500">
+              現在 {totals.champagne}本
+            </p>
+            <p className="mt-1 text-xs text-zinc-500">
+              残り{" "}
+              {Math.max(
+                0,
+                champagneGoal - totals.champagne
+              )}
+              本
+            </p>
+          </div>
+
+          <div className="rounded-3xl border border-zinc-800 bg-zinc-950 p-4">
+            <p className="text-xs text-zinc-500">
+              来店組数目標
+            </p>
+            <p className="mt-2 text-2xl font-bold">
+              {goal ? `${visitGoal}組` : "未設定"}
+            </p>
+            <p className="mt-3 text-xs text-zinc-500">
+              現在 {totals.visits}組
+            </p>
+            <p className="mt-1 text-xs text-zinc-500">
+              残り {Math.max(0, visitGoal - totals.visits)}組
+            </p>
+          </div>
+        </section>
+
+        {editing && (
+          <section className="mt-4 rounded-3xl border border-zinc-700 bg-zinc-950 p-5">
+            <p className="text-lg font-bold">
+              チーム目標設定
+            </p>
+
+            <div className="mt-5 space-y-4">
+              <input
+                type="number"
+                value={targetSales}
+                onChange={(e) => setTargetSales(e.target.value)}
+                placeholder="売上目標"
+                className="w-full rounded-2xl border border-zinc-800 bg-black px-4 py-3"
+              />
+
+              <input
+                type="number"
+                value={champagneTarget}
+                onChange={(e) =>
+                  setChampagneTarget(e.target.value)
+                }
+                placeholder="オリシャン目標"
+                className="w-full rounded-2xl border border-zinc-800 bg-black px-4 py-3"
+              />
+
+              <input
+                type="number"
+                value={visitTarget}
+                onChange={(e) => setVisitTarget(e.target.value)}
+                placeholder="来店組数目標"
+                className="w-full rounded-2xl border border-zinc-800 bg-black px-4 py-3"
+              />
+
+              <button
+                onClick={saveGoal}
+                disabled={saving}
+                className="w-full rounded-2xl bg-white py-4 font-bold text-black disabled:opacity-50"
+              >
+                {saving ? "保存中..." : "保存する"}
+              </button>
+
+              {message && (
+                <p className="text-center text-sm text-green-400">
+                  {message}
+                </p>
+              )}
+            </div>
+          </section>
+        )}
+
+        <section className="mt-6 rounded-3xl border border-zinc-800 bg-zinc-950 p-5">
+          <p className="text-xs text-zinc-500">
+            GOAL ALLOCATION
+          </p>
+
+          <h2 className="mt-2 text-xl font-bold">
+            個人目標への配分状況
+          </h2>
+
+          <div className="mt-5 space-y-5">
+            <div>
+              <p className="text-xs text-zinc-500">売上</p>
+              <div className="mt-2 flex justify-between">
+                <span className="text-sm">チーム目標</span>
+                <span className="font-bold">{yen(salesTarget)}</span>
+              </div>
+              <div className="mt-2 flex justify-between">
+                <span className="text-sm text-zinc-500">個人目標合計</span>
+                <span>{yen(memberGoalTotals.sales)}</span>
+              </div>
+              <div className="mt-2 flex justify-between">
+                <span className="text-sm text-zinc-500">
+                  {unallocatedSales > 0 ? "未配分" : "達成状況"}
+                </span>
+                <span className={unallocatedSales <= 0 ? "font-bold text-white" : ""}>
+  {unallocatedSales > 0
+    ? yen(unallocatedSales)
+    : unallocatedSales === 0
+      ? "✓ 目標達成"
+      : `✓ 目標達成 +${yen(Math.abs(unallocatedSales))}`}
+</span>
+              </div>
+            </div>
+
+            <div className="border-t border-zinc-800 pt-4">
+              <p className="text-xs text-zinc-500">オリシャン</p>
+              <div className="mt-2 flex justify-between">
+                <span className="text-sm">チーム目標</span>
+                <span className="font-bold">{champagneGoal}本</span>
+              </div>
+              <div className="mt-2 flex justify-between">
+                <span className="text-sm text-zinc-500">個人目標合計</span>
+                <span>{memberGoalTotals.champagne}本</span>
+              </div>
+              <div className="mt-2 flex justify-between">
+                <span className="text-sm text-zinc-500">
+                  {unallocatedChampagne > 0 ? "未配分" : "達成状況"}
+                </span>
+                <span className={unallocatedChampagne <= 0 ? "font-bold text-white" : ""}>
+  {unallocatedChampagne > 0
+    ? `${unallocatedChampagne}本`
+    : unallocatedChampagne === 0
+      ? "✓ 目標達成"
+      : `✓ 目標達成 +${Math.abs(unallocatedChampagne)}本`}
+</span>
+              </div>
+            </div>
+
+            <div className="border-t border-zinc-800 pt-4">
+              <p className="text-xs text-zinc-500">来店組数</p>
+              <div className="mt-2 flex justify-between">
+                <span className="text-sm">チーム目標</span>
+                <span className="font-bold">{visitGoal}組</span>
+              </div>
+              <div className="mt-2 flex justify-between">
+                <span className="text-sm text-zinc-500">個人目標合計</span>
+                <span>{memberGoalTotals.visits}組</span>
+              </div>
+              <div className="mt-2 flex justify-between">
+                <span className="text-sm text-zinc-500">
+                  {unallocatedVisits > 0 ? "未配分" : "達成状況"}
+                </span>
+                <span className={unallocatedVisits <= 0 ? "font-bold text-white" : ""}>
+  {unallocatedVisits > 0
+    ? `${unallocatedVisits}組`
+    : unallocatedVisits === 0
+      ? "✓ 目標達成"
+      : `✓ 目標達成 +${Math.abs(unallocatedVisits)}組`}
+</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="mt-6">
+          <p className="text-xs text-zinc-500">
+            TEAM MEMBERS
+          </p>
+
+          <h2 className="mt-2 text-xl font-bold">
+            メンバー
+          </h2>
+
+          <div className="mt-4 space-y-3">
+            {members.map((member) => {
+              const memberGoal = memberGoals.find(
+                (row) => row.member_id === member.id
+              );
+
+              const memberResult = results
+                .filter((row) => row.member_id === member.id)
+                .reduce(
+                  (sum, row) => ({
+                    sales: sum.sales + Number(row.sales ?? 0),
+                    champagne:
+                      sum.champagne + Number(row.champagne_count ?? 0),
+                    visits:
+                      sum.visits + Number(row.visit_count ?? 0),
+                  }),
+                  {
+                    sales: 0,
+                    champagne: 0,
+                    visits: 0,
+                  }
+                );
+
+              const memberSalesTarget =
+                Number(memberGoal?.target_sales ?? 0);
+
+              const memberChampagneTarget =
+                Number(memberGoal?.champagne_target ?? 0);
+
+              const memberVisitTarget =
+                Number(memberGoal?.visit_count_target ?? 0);
+
+              const memberSalesRate = rate(
+                memberResult.sales,
+                memberSalesTarget
+              );
+
+              return (
+                <Link
+                  key={member.id}
+                  href={`/members/${member.id}`}
+                  className="block rounded-2xl border border-zinc-800 bg-zinc-950 p-4"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-lg font-bold">
+                      {member.name}
+                    </span>
+
+                    <span className="text-zinc-500">
+                      →
+                    </span>
+                  </div>
+
+                  <div className="mt-4">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-zinc-500">
+                        売上
+                      </span>
+
+                      <span>
+                        {yen(memberResult.sales)}
+                        {" / "}
+                        {memberSalesTarget > 0
+                          ? yen(memberSalesTarget)
+                          : "未設定"}
+                      </span>
+                    </div>
+
+                    <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-zinc-800">
+                      <div
+                        className="h-full bg-white"
+                        style={{
+                          width: `${memberSalesRate}%`,
+                        }}
+                      />
+                    </div>
+
+                    <div className="mt-2 flex items-center justify-between text-xs text-zinc-500">
+                      <span>
+                        {memberSalesTarget > 0
+                          ? `個人目標達成率 ${memberSalesRate}%`
+                          : "個人目標未設定"}
+                      </span>
+
+                      <span>
+                        {salesTarget > 0
+                          ? `チーム貢献率 ${Math.round((memberResult.sales / salesTarget) * 1000) / 10}%`
+                          : "チーム目標未設定"}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-2 gap-3">
+                    <div className="rounded-xl bg-zinc-900 p-3">
+                      <p className="text-xs text-zinc-500">
+                        オリシャン
+                      </p>
+
+                      <p className="mt-1 font-bold">
+                        {memberResult.champagne}
+                        {" / "}
+                        {memberChampagneTarget > 0
+                          ? `${memberChampagneTarget}本`
+                          : "未設定"}
+                      </p>
+                    </div>
+
+                    <div className="rounded-xl bg-zinc-900 p-3">
+                      <p className="text-xs text-zinc-500">
+                        来店組数
+                      </p>
+
+                      <p className="mt-1 font-bold">
+                        {memberResult.visits}
+                        {" / "}
+                        {memberVisitTarget > 0
+                          ? `${memberVisitTarget}組`
+                          : "未設定"}
+                      </p>
+                    </div>
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        </section>
+      </div>
+
+      <nav className="fixed bottom-0 left-0 right-0 border-t border-zinc-900 bg-black/95">
+        <div className="mx-auto grid max-w-md grid-cols-4">
+          <Link href="/" className="py-4 text-center text-xs text-zinc-600">
+            ホーム
+          </Link>
+          <Link href="/teams" className="py-4 text-center text-xs font-bold text-white">
+            チーム
+          </Link>
+          <Link href="/daily" className="py-4 text-center text-xs text-zinc-600">
+            日報
+          </Link>
+          <Link href="/settings" className="py-4 text-center text-xs text-zinc-600">
+            設定
+          </Link>
+        </div>
+      </nav>
+    </main>
+  );
+}

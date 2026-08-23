@@ -1,0 +1,120 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { createClient } from "@/utils/supabase/client";
+
+type Team = {
+  id: string;
+  name: string;
+  display_order: number;
+};
+
+export default function TeamsPage() {
+  const router = useRouter();
+  const [supabase] = useState(() => createClient());
+
+  const [teams, setTeams] = useState<Team[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState("");
+
+  useEffect(() => {
+    async function load() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        router.replace("/login");
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("teams")
+        .select("id, name, display_order")
+        .eq("is_active", true)
+        .order("display_order");
+
+      if (error) {
+        setErrorMessage(error.message);
+        setLoading(false);
+        return;
+      }
+
+      setTeams(data ?? []);
+      setLoading(false);
+    }
+
+    load();
+  }, [router, supabase]);
+
+  if (loading) {
+    return (
+      <main className="min-h-screen bg-black text-white flex items-center justify-center">
+        <p className="text-zinc-500">読み込み中...</p>
+      </main>
+    );
+  }
+
+  return (
+    <main className="min-h-screen bg-black text-white pb-24">
+      <div className="mx-auto w-full max-w-md px-5 pt-8">
+        <Link href="/" className="text-sm text-zinc-500">
+          ← ホーム
+        </Link>
+
+        <header className="mt-6 mb-8">
+          <p className="text-xs tracking-[0.3em] text-zinc-500">
+            SWAMP-FOG
+          </p>
+          <h1 className="mt-2 text-3xl font-bold">チーム</h1>
+          <p className="mt-1 text-sm text-zinc-500">
+            TEAM GOALS
+          </p>
+        </header>
+
+        {errorMessage && (
+          <p className="mb-4 text-sm text-red-400">
+            ERROR: {errorMessage}
+          </p>
+        )}
+
+        <div className="space-y-3">
+          {teams.map((team) => (
+            <Link
+              key={team.id}
+              href={`/teams/${team.id}`}
+              className="block rounded-3xl border border-zinc-800 bg-zinc-950 p-5"
+            >
+              <p className="text-xs text-zinc-500">TEAM</p>
+              <p className="mt-2 text-xl font-bold">
+                {team.name}
+              </p>
+              <p className="mt-2 text-sm text-zinc-500">
+                チーム目標・実績を見る →
+              </p>
+            </Link>
+          ))}
+        </div>
+      </div>
+
+      <nav className="fixed bottom-0 left-0 right-0 border-t border-zinc-900 bg-black/95">
+        <div className="mx-auto grid max-w-md grid-cols-4">
+          <Link href="/" className="py-4 text-center text-xs text-zinc-600">
+            ホーム
+          </Link>
+          <Link href="/teams" className="py-4 text-center text-xs font-bold text-white">
+            チーム
+          </Link>
+          <Link href="/daily" className="py-4 text-center text-xs text-zinc-600">
+            日報
+          </Link>
+          <Link href="/settings" className="py-4 text-center text-xs text-zinc-600">
+            設定
+          </Link>
+        </div>
+      </nav>
+    </main>
+  );
+}

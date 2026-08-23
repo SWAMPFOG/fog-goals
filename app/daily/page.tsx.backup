@@ -1,0 +1,257 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { createClient } from "@/utils/supabase/client";
+
+type Member = {
+  id: string;
+  name: string;
+  team_id: string;
+};
+
+export default function DailyPage() {
+  const router = useRouter();
+  const [supabase] = useState(() => createClient());
+
+  const [members, setMembers] = useState<Member[]>([]);
+  const [memberId, setMemberId] = useState("");
+  const [businessDate, setBusinessDate] = useState(
+    new Date().toISOString().slice(0, 10)
+  );
+
+  const [sales, setSales] = useState("");
+  const [champagneCount, setChampagneCount] = useState("");
+  const [visitCount, setVisitCount] = useState("");
+  const [existingVisitCount, setExistingVisitCount] = useState("");
+
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    async function load() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        router.replace("/login");
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("members")
+        .select("id, name, team_id")
+        .eq("is_active", true)
+        .order("display_order");
+
+      if (!error && data) {
+        setMembers(data);
+        if (data.length > 0) {
+          setMemberId(data[0].id);
+        }
+      }
+    }
+
+    load();
+  }, [router, supabase]);
+
+  useEffect(() => {
+    async function loadExistingDaily() {
+      if (!memberId || !businessDate) return;
+
+      setMessage("");
+
+      const { data, error } = await supabase
+        .from("daily_results")
+        .select("sales, champagne_count, visit_count, existing_visit_count")
+        .eq("member_id", memberId)
+        .eq("business_date", businessDate)
+        .maybeSingle();
+
+      if (error) {
+        setMessage("ERROR: " + error.message);
+        return;
+      }
+
+      if (data) {
+        setSales(String(data.sales ?? 0));
+        setChampagneCount(String(data.champagne_count ?? 0));
+        setVisitCount(String(data.visit_count ?? 0));
+        setExistingVisitCount(String(data.existing_visit_count ?? 0));
+      } else {
+        setSales("");
+        setChampagneCount("");
+        setVisitCount("");
+        setExistingVisitCount("");
+      }
+    }
+
+    loadExistingDaily();
+  }, [memberId, businessDate, supabase]);
+
+  async function saveDaily() {
+    if (!memberId) return;
+
+    const member = members.find((m) => m.id === memberId);
+    if (!member) return;
+
+    setSaving(true);
+    setMessage("");
+
+    const payload = {
+      member_id: member.id,
+      team_id: member.team_id,
+      business_date: businessDate,
+      sales: Number(sales || 0),
+      champagne_count: Number(champagneCount || 0),
+      visit_count: Number(visitCount || 0),
+      existing_visit_count: Number(existingVisitCount || 0),
+    };
+
+    const { error } = await supabase
+      .from("daily_results")
+      .upsert(payload, {
+        onConflict: "member_id,business_date",
+      });
+
+    if (error) {
+      setMessage("ERROR: " + error.message);
+      setSaving(false);
+      return;
+    }
+
+    setMessage("保存しました");
+    setSaving(false);
+  }
+
+  return (
+    <main className="min-h-screen bg-black text-white pb-24">
+      <div className="mx-auto w-full max-w-md px-5 pt-8">
+        <p className="text-xs tracking-[0.3em] text-zinc-500">
+          SWAMP-FOG
+        </p>
+
+        <h1 className="mt-2 text-3xl font-bold">日報</h1>
+        <p className="mt-1 text-sm text-zinc-500">DAILY RESULT</p>
+
+        <div className="mt-8 space-y-5">
+          <label className="block">
+            <span className="text-sm text-zinc-400">営業日</span>
+            <input
+              type="date"
+              value={businessDate}
+              onChange={(e) => setBusinessDate(e.target.value)}
+              className="mt-2 w-full rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-4 text-white"
+            />
+          </label>
+
+          <label className="block">
+            <span className="text-sm text-zinc-400">メンバー</span>
+            <select
+              value={memberId}
+              onChange={(e) => setMemberId(e.target.value)}
+              className="mt-2 w-full rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-4 text-white"
+            >
+              {members.map((member) => (
+                <option key={member.id} value={member.id}>
+                  {member.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="block">
+            <span className="text-sm text-zinc-400">売上</span>
+            <input
+              type="number"
+              inputMode="numeric"
+              value={sales}
+              onChange={(e) => setSales(e.target.value)}
+              placeholder="50000"
+              className="mt-2 w-full rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-4 text-white"
+            />
+          </label>
+
+          <label className="block">
+            <span className="text-sm text-zinc-400">オリシャン本数</span>
+            <input
+              type="number"
+              inputMode="numeric"
+              value={champagneCount}
+              onChange={(e) => setChampagneCount(e.target.value)}
+              placeholder="1"
+              className="mt-2 w-full rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-4 text-white"
+            />
+          </label>
+
+          <label className="block">
+            <span className="text-sm text-zinc-400">来店組数</span>
+            <input
+              type="number"
+              inputMode="numeric"
+              value={visitCount}
+              onChange={(e) => setVisitCount(e.target.value)}
+              placeholder="2"
+              className="mt-2 w-full rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-4 text-white"
+            />
+          </label>
+
+          <label className="block">
+            <span className="text-sm text-zinc-400">既存来店組数</span>
+            <input
+              type="number"
+              inputMode="numeric"
+              value={existingVisitCount}
+              onChange={(e) => setExistingVisitCount(e.target.value)}
+              placeholder="1"
+              className="mt-2 w-full rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-4 text-white"
+            />
+          </label>
+
+          <button
+            type="button"
+            onClick={saveDaily}
+            disabled={saving}
+            className="w-full rounded-2xl bg-white py-4 font-bold text-black disabled:opacity-50"
+          >
+            {saving ? "保存中..." : "保存する"}
+          </button>
+
+          {message && (
+            <p className="text-center text-sm text-zinc-400">
+              {message}
+            </p>
+          )}
+        </div>
+      </div>
+
+      <nav className="fixed bottom-0 left-0 right-0 border-t border-zinc-900 bg-black/95">
+        <div className="mx-auto grid max-w-md grid-cols-4">
+          <Link href="/" className="py-4 text-center text-xs text-zinc-600">
+            ホーム
+          </Link>
+
+          <Link
+            href="/members"
+            className="py-4 text-center text-xs text-zinc-600"
+          >
+            メンバー
+          </Link>
+
+          <Link
+            href="/daily"
+            className="py-4 text-center text-xs font-bold text-white"
+          >
+            日報
+          </Link>
+
+          <button className="py-4 text-xs text-zinc-600">
+            設定
+          </button>
+        </div>
+      </nav>
+    </main>
+  );
+}
