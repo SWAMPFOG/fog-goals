@@ -22,7 +22,7 @@ export default function SettingsPage() {
   const [champagneTarget, setChampagneTarget] = useState("");
   const [visitTarget, setVisitTarget] = useState("");
 
-  const [loading, setLoading] = useState(true);
+  const [loadinga, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [role, setRole] = useState<string | null>(null);
@@ -287,33 +287,6 @@ export default function SettingsPage() {
           )}
         </div>
       </div>
-
-      
-      {["company_manager", "chairman"].includes(role ?? "") && (
-        <div className="mt-6">
-          <Link
-            href="/settings/organization"
-            className="block w-full rounded-2xl border border-zinc-800 bg-zinc-950 px-5 py-5"
-          >
-            <p className="text-xs tracking-widest text-zinc-500">
-              ORGANIZATION
-            </p>
-
-            <div className="mt-1 flex items-center justify-between">
-              <div>
-                <p className="text-lg font-bold text-white">
-                  組織管理
-                </p>
-                <p className="mt-1 text-sm text-zinc-500">
-                  チーム・メンバーの追加と管理
-                </p>
-              </div>
-
-              <span className="text-zinc-500">→</span>
-            </div>
-          </Link>
-        </div>
-      )}
 
       <nav className="fixed bottom-0 left-0 right-0 border-t border-zinc-900 bg-black/95">
         <div className="mx-auto grid max-w-md grid-cols-4">
