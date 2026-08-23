@@ -1,0 +1,413 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { createClient } from "@/utils/supabase/client";
+
+type Department = {
+  id: string;
+  name: string;
+};
+
+type Team = {
+  id: string;
+  name: string;
+  department_id: string | null;
+  display_order: number;
+  is_active: boolean;
+};
+
+type Member = {
+  id: string;
+  name: string;
+  team_id: string | null;
+  display_order: number;
+  is_active: boolean;
+};
+
+export default function OrganizationPage() {
+  const router = useRouter();
+  const supabase = createClient();
+
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState("");
+
+  const [departments, setDepartments] = useState<Department[]>([]);
+  const [teams, setTeams] = useState<Team[]>([]);
+  const [members, setMembers] = useState<Member[]>([]);
+
+  const [newTeamName, setNewTeamName] = useState("");
+  const [newTeamDepartmentId, setNewTeamDepartmentId] = useState("");
+
+  const [newMemberName, setNewMemberName] = useState("");
+  const [newMemberTeamId, setNewMemberTeamId] = useState("");
+
+  async function loadData() {
+    setLoading(true);
+    setMessage("");
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      router.replace("/login");
+      return;
+    }
+
+    const [
+      departmentsResult,
+      teamsResult,
+      membersResult,
+    ] = await Promise.all([
+      supabase
+        .from("departments")
+        .select("id,name")
+        .eq("is_active", true)
+        .order("display_order"),
+
+      supabase
+        .from("teams")
+        .select("id,name,department_id,display_order,is_active")
+        .eq("is_active", true)
+        .order("display_order"),
+
+      supabase
+        .from("members")
+        .select("id,name,team_id,display_order,is_active")
+        .eq("is_active", true)
+        .order("display_order"),
+    ]);
+
+    if (departmentsResult.error) {
+      setMessage("部署取得エラー: " + departmentsResult.error.message);
+    }
+
+    if (teamsResult.error) {
+      setMessage("チーム取得エラー: " + teamsResult.error.message);
+    }
+
+    if (membersResult.error) {
+      setMessage("メンバー取得エラー: " + membersResult.error.message);
+    }
+
+    setDepartments(departmentsResult.data ?? []);
+    setTeams(teamsResult.data ?? []);
+    setMembers(membersResult.data ?? []);
+
+    setLoading(false);
+  }
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  async function addTeam() {
+    const name = newTeamName.trim();
+
+    if (!name) {
+      setMessage("チーム名を入力してください");
+      return;
+    }
+
+    if (!newTeamDepartmentId) {
+      setMessage("所属部署を選択してください");
+      return;
+    }
+
+    setSaving(true);
+    setMessage("");
+
+    const nextOrder =
+      teams.length > 0
+        ? Math.max(...teams.map((t) => Number(t.display_order ?? 0))) + 1
+        : 1;
+
+    const { error } = await supabase.from("teams").insert({
+      name,
+      department_id: newTeamDepartmentId,
+      display_order: nextOrder,
+      is_active: true,
+    });
+
+    if (error) {
+      setMessage("チーム追加エラー: " + error.message);
+      setSaving(false);
+      return;
+    }
+
+    setNewTeamName("");
+    setNewTeamDepartmentId("");
+    setMessage("チームを追加しました");
+    await loadData();
+    setSaving(false);
+  }
+
+  async function addMember() {
+    const name = newMemberName.trim();
+
+    if (!name) {
+      setMessage("メンバー名を入力してください");
+      return;
+    }
+
+    if (!newMemberTeamId) {
+      setMessage("所属チームを選択してください");
+      return;
+    }
+
+    setSaving(true);
+    setMessage("");
+
+    const sameTeamMembers = members.filter(
+      (member) => member.team_id === newMemberTeamId
+    );
+
+    const nextOrder =
+      sameTeamMembers.length > 0
+        ? Math.max(
+            ...sameTeamMembers.map((member) =>
+              Number(member.display_order ?? 0)
+            )
+          ) + 1
+        : 1;
+
+    const { error } = await supabase.from("members").insert({
+      name,
+      team_id: newMemberTeamId,
+      display_order: nextOrder,
+      is_active: true,
+    });
+
+    if (error) {
+      setMessage("メンバー追加エラー: " + error.message);
+      setSaving(false);
+      return;
+    }
+
+    setNewMemberName("");
+    setNewMemberTeamId("");
+    setMessage("メンバーを追加しました");
+    await loadData();
+    setSaving(false);
+  }
+
+  function departmentName(departmentId: string | null) {
+    if (!departmentId) return "未設定";
+
+    return (
+      departments.find((department) => department.id === departmentId)?.name ??
+      "不明"
+    );
+  }
+
+  function teamName(teamId: string | null) {
+    if (!teamId) return "未設定";
+
+    return teams.find((team) => team.id === teamId)?.name ?? "不明";
+  }
+
+  if (loading) {
+    return (
+      <main className="min-h-screen bg-black text-white flex items-center justify-center">
+        <p className="text-zinc-500">読み込み中...</p>
+      </main>
+    );
+  }
+
+  return (
+    <main className="min-h-screen bg-black text-white pb-24">
+      <div className="mx-auto w-full max-w-md px-5 pt-8">
+        <header className="mb-8">
+          <Link href="/settings" className="text-sm text-zinc-500">
+            ← 設定へ戻る
+          </Link>
+
+          <p className="mt-8 text-xs tracking-[0.3em] text-zinc-500">
+            SWAMP-FOG
+          </p>
+
+          <h1 className="mt-2 text-3xl font-bold">
+            組織管理
+          </h1>
+
+          <p className="mt-1 text-sm text-zinc-500">
+            ORGANIZATION MANAGEMENT
+          </p>
+        </header>
+
+        {message && (
+          <div className="mb-5 rounded-2xl border border-zinc-800 bg-zinc-950 p-4 text-sm">
+            {message}
+          </div>
+        )}
+
+        <section className="mb-6 rounded-3xl border border-zinc-800 bg-zinc-950 p-5">
+          <p className="text-xs text-zinc-500">
+            TEAM
+          </p>
+
+          <h2 className="mt-1 text-xl font-bold">
+            チーム追加
+          </h2>
+
+          <div className="mt-5 space-y-4">
+            <div>
+              <label className="mb-2 block text-sm text-zinc-400">
+                チーム名
+              </label>
+
+              <input
+                value={newTeamName}
+                onChange={(e) => setNewTeamName(e.target.value)}
+                placeholder="例：黄昏チーム"
+                className="w-full rounded-2xl border border-zinc-800 bg-black px-4 py-4 outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="mb-2 block text-sm text-zinc-400">
+                所属部署
+              </label>
+
+              <select
+                value={newTeamDepartmentId}
+                onChange={(e) => setNewTeamDepartmentId(e.target.value)}
+                className="w-full rounded-2xl border border-zinc-800 bg-black px-4 py-4 outline-none"
+              >
+                <option value="">
+                  選択してください
+                </option>
+
+                {departments.map((department) => (
+                  <option key={department.id} value={department.id}>
+                    {department.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <button
+              onClick={addTeam}
+              disabled={saving}
+              className="w-full rounded-2xl bg-white py-4 font-bold text-black disabled:opacity-50"
+            >
+              {saving ? "保存中..." : "チームを追加"}
+            </button>
+          </div>
+        </section>
+
+        <section className="mb-6 rounded-3xl border border-zinc-800 bg-zinc-950 p-5">
+          <p className="text-xs text-zinc-500">
+            MEMBER
+          </p>
+
+          <h2 className="mt-1 text-xl font-bold">
+            メンバー追加
+          </h2>
+
+          <div className="mt-5 space-y-4">
+            <div>
+              <label className="mb-2 block text-sm text-zinc-400">
+                メンバー名
+              </label>
+
+              <input
+                value={newMemberName}
+                onChange={(e) => setNewMemberName(e.target.value)}
+                placeholder="例：新規メンバー"
+                className="w-full rounded-2xl border border-zinc-800 bg-black px-4 py-4 outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="mb-2 block text-sm text-zinc-400">
+                所属チーム
+              </label>
+
+              <select
+                value={newMemberTeamId}
+                onChange={(e) => setNewMemberTeamId(e.target.value)}
+                className="w-full rounded-2xl border border-zinc-800 bg-black px-4 py-4 outline-none"
+              >
+                <option value="">
+                  選択してください
+                </option>
+
+                {teams.map((team) => (
+                  <option key={team.id} value={team.id}>
+                    {team.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <button
+              onClick={addMember}
+              disabled={saving}
+              className="w-full rounded-2xl bg-white py-4 font-bold text-black disabled:opacity-50"
+            >
+              {saving ? "保存中..." : "メンバーを追加"}
+            </button>
+          </div>
+        </section>
+
+        <section className="mb-6">
+          <p className="text-xs text-zinc-500">
+            TEAM LIST
+          </p>
+
+          <h2 className="mt-1 text-xl font-bold">
+            チーム一覧
+          </h2>
+
+          <div className="mt-4 space-y-3">
+            {teams.map((team) => (
+              <div
+                key={team.id}
+                className="rounded-2xl border border-zinc-800 p-4"
+              >
+                <p className="font-bold">
+                  {team.name}
+                </p>
+
+                <p className="mt-1 text-sm text-zinc-500">
+                  {departmentName(team.department_id)}
+                </p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section>
+          <p className="text-xs text-zinc-500">
+            MEMBER LIST
+          </p>
+
+          <h2 className="mt-1 text-xl font-bold">
+            メンバー一覧
+          </h2>
+
+          <div className="mt-4 space-y-3">
+            {members.map((member) => (
+              <div
+                key={member.id}
+                className="rounded-2xl border border-zinc-800 p-4"
+              >
+                <p className="font-bold">
+                  {member.name}
+                </p>
+
+                <p className="mt-1 text-sm text-zinc-500">
+                  {teamName(member.team_id)}
+                </p>
+              </div>
+            ))}
+          </div>
+        </section>
+      </div>
+    </main>
+  );
+}
