@@ -130,8 +130,8 @@ export default function MembersPage() {
 
   return (
     <main className="min-h-screen bg-black text-white pb-24">
-      <div className="mx-auto w-full max-w-md px-5 pt-8">
-        <header className="mb-6">
+      <div className="mx-auto w-full max-w-md px-5 pt-0">
+        <header className="sticky top-0 z-40 -mx-5 mb-6 border-b border-zinc-900 bg-black/90 px-5 pb-4 pt-4 backdrop-blur-xl">
           <p className="text-xs tracking-[0.3em] text-zinc-500">
             SWAMP-FOG
           </p>

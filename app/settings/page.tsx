@@ -185,7 +185,7 @@ export default function SettingsPage() {
 
   return (
     <main className="min-h-screen bg-black text-white pb-24">
-      <div className="mx-auto w-full max-w-md px-5 pt-8">
+      <div className="mx-auto w-full max-w-md px-5 pt-0">
         <Link
           href="/"
           className="text-sm text-zinc-500"

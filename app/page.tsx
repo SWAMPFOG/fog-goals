@@ -245,8 +245,8 @@ export default function HomePage() {
 
   return (
     <main className="min-h-screen bg-black text-white pb-24">
-      <div className="mx-auto w-full max-w-md px-5 pt-8">
-        <header className="mb-6">
+      <div className="mx-auto w-full max-w-md px-5 pt-0">
+        <header className="sticky top-0 z-40 -mx-5 mb-6 border-b border-zinc-900 bg-black/90 px-5 pb-4 pt-4 backdrop-blur-xl">
           <div className="flex items-start justify-between gap-4">
             <div><p className="text-xs tracking-[0.3em] text-zinc-500">SWAMP-FOG</p><h1 className="mt-2 text-3xl font-bold">FOG GOALS</h1><p className="mt-1 text-sm text-zinc-500">Team Goal Management</p></div>
             <button onClick={handleLogout} className="rounded-xl border border-zinc-800 px-3 py-2 text-xs text-zinc-400">ログアウト</button>
