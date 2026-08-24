@@ -686,34 +686,38 @@ export default function DailyPage() {
         )}
       </div>
 
-      <nav className="fixed bottom-0 left-0 right-0 border-t border-zinc-900 bg-black/95">
-        <div className="mx-auto grid max-w-md grid-cols-4">
+      <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-zinc-800 bg-black/95 backdrop-blur-xl pb-[env(safe-area-inset-bottom)]">
+        <div className="mx-auto grid max-w-md grid-cols-4 px-2 pt-1">
           <Link
             href="/"
-            className="py-4 text-center text-xs text-zinc-600"
+            className="py-2.5 text-center text-[10px] text-zinc-600"
           >
-            ホーム
+            <span className="block text-lg leading-none">⌂</span>
+            <span className="mt-1 block">ホーム</span>
           </Link>
 
           <Link
             href="/members"
-            className="py-4 text-center text-xs text-zinc-600"
+            className="py-2.5 text-center text-[10px] text-zinc-600"
           >
-            メンバー
+            <span className="block text-lg leading-none">♙</span>
+            <span className="mt-1 block">メンバー</span>
           </Link>
 
           <Link
             href="/daily"
-            className="py-4 text-center text-xs font-bold text-white"
+            className="py-2.5 text-center text-[10px] font-bold text-white"
           >
-            日報
+            <span className="block text-lg leading-none">✎</span>
+            <span className="mt-1 block">日報</span>
           </Link>
 
           <Link
             href="/settings"
-            className="py-4 text-center text-xs text-zinc-600"
+            className="py-2.5 text-center text-[10px] text-zinc-600"
           >
-            設定
+            <span className="block text-lg leading-none">⚙</span>
+            <span className="mt-1 block">設定</span>
           </Link>
         </div>
       </nav>
