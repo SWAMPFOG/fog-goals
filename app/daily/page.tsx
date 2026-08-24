@@ -346,6 +346,13 @@ export default function DailyPage() {
 
     setMessage(`${targets.length}名分の日報を保存しました`);
     setSaving(false);
+
+    const returnTeamId =
+      new URLSearchParams(window.location.search).get("team");
+
+    if (returnTeamId) {
+      window.location.href = `/teams/${returnTeamId}`;
+    }
   }
 
   const completedCount = useMemo(() => {
