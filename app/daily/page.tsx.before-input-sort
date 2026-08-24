@@ -450,25 +450,7 @@ export default function DailyPage() {
         )}
 
         <div className="mt-5 space-y-4">
-          {[...members]
-            .sort((a, b) => {
-              const rowA = rows[a.id];
-              const rowB = rows[b.id];
-
-              const activeA =
-                !!rowA &&
-                (hasInput(rowA) || existingIds.has(a.id));
-
-              const activeB =
-                !!rowB &&
-                (hasInput(rowB) || existingIds.has(b.id));
-
-              if (activeA && !activeB) return -1;
-              if (!activeA && activeB) return 1;
-
-              return 0;
-            })
-            .map((member) => {
+          {members.map((member) => {
             const row = rows[member.id];
 
             if (!row) return null;
