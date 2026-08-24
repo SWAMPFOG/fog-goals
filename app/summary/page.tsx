@@ -35,12 +35,30 @@ type Daily = {
   visit_count: number | null;
 };
 
+type Goal = {
+  target_sales: number | null;
+  champagne_target: number | null;
+  visit_count_target: number | null;
+};
+
+type TeamGoal = Goal & {
+  team_id: string;
+};
+
+type DepartmentGoal = Goal & {
+  department_id: string;
+};
+
 type Row = {
   id: string;
   name: string;
   sales: number;
   champagne: number;
   visits: number;
+  previousSales: number;
+  targetSales: number;
+  targetChampagne: number;
+  targetVisits: number;
 };
 
 function currentMonth() {
@@ -48,8 +66,30 @@ function currentMonth() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 
+function previousMonth(month: string) {
+  const [y, m] = month.split("-").map(Number);
+  const d = new Date(y, m - 2, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function nextMonth(month: string) {
+  const [y, m] = month.split("-").map(Number);
+  const d = new Date(y, m, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
 function yen(v: number) {
   return `¥${v.toLocaleString("ja-JP")}`;
+}
+
+function rate(current: number, target: number) {
+  if (target <= 0) return 0;
+  return Math.round((current / target) * 1000) / 10;
+}
+
+function diffRate(current: number, previous: number) {
+  if (previous <= 0) return null;
+  return Math.round(((current - previous) / previous) * 1000) / 10;
 }
 
 export default function SummaryPage() {
@@ -58,10 +98,18 @@ export default function SummaryPage() {
 
   const [month, setMonth] = useState(currentMonth());
   const [profile, setProfile] = useState<Profile | null>(null);
+
   const [departments, setDepartments] = useState<Department[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
+
   const [results, setResults] = useState<Daily[]>([]);
+  const [previousResults, setPreviousResults] = useState<Daily[]>([]);
+
+  const [teamGoals, setTeamGoals] = useState<TeamGoal[]>([]);
+  const [departmentGoals, setDepartmentGoals] = useState<DepartmentGoal[]>([]);
+  const [storeGoal, setStoreGoal] = useState<Goal | null>(null);
+
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
 
@@ -101,10 +149,12 @@ export default function SummaryPage() {
           .from("departments")
           .select("id,name")
           .eq("is_active", true),
+
         supabase
           .from("teams")
           .select("id,department_id,name")
           .eq("is_active", true),
+
         supabase
           .from("members")
           .select("id,team_id,name")
@@ -128,9 +178,11 @@ export default function SummaryPage() {
 
       if (p.role === "team_manager") {
         allowedTeams = allowedTeams.filter((t) => t.id === p.team_id);
+
         allowedMembers = allowedMembers.filter(
           (m) => m.team_id === p.team_id
         );
+
         allowedDepartments = allowedDepartments.filter((d) =>
           allowedTeams.some((t) => t.department_id === d.id)
         );
@@ -138,12 +190,15 @@ export default function SummaryPage() {
         allowedDepartments = allowedDepartments.filter(
           (d) => d.id === p.department_id
         );
+
         allowedTeams = allowedTeams.filter(
           (t) => t.department_id === p.department_id
         );
-        const teamIds = allowedTeams.map((t) => t.id);
+
+        const ids = allowedTeams.map((t) => t.id);
+
         allowedMembers = allowedMembers.filter(
-          (m) => m.team_id && teamIds.includes(m.team_id)
+          (m) => !!m.team_id && ids.includes(m.team_id)
         );
       } else if (
         !["business_manager", "company_manager", "chairman"].includes(
@@ -159,49 +214,126 @@ export default function SummaryPage() {
       setTeams(allowedTeams);
       setMembers(allowedMembers);
 
-      const startDate = `${month}-01`;
-      const [y, m] = month.split("-").map(Number);
-      const next = new Date(y, m, 1);
-      const nextMonth = `${next.getFullYear()}-${String(
-        next.getMonth() + 1
-      ).padStart(2, "0")}-01`;
+      const targetMonth = `${month}-01`;
+      const next = `${nextMonth(month)}-01`;
 
-      if (allowedMembers.length === 0) {
+      const prev = previousMonth(month);
+      const prevStart = `${prev}-01`;
+
+      const memberIds = allowedMembers.map((m) => m.id);
+      const teamIds = allowedTeams.map((t) => t.id);
+      const departmentIds = allowedDepartments.map((d) => d.id);
+
+      if (memberIds.length > 0) {
+        const [currentResult, previousResult] = await Promise.all([
+          supabase
+            .from("daily_results")
+            .select("member_id,sales,champagne_count,visit_count")
+            .in("member_id", memberIds)
+            .gte("business_date", targetMonth)
+            .lt("business_date", next),
+
+          supabase
+            .from("daily_results")
+            .select("member_id,sales,champagne_count,visit_count")
+            .in("member_id", memberIds)
+            .gte("business_date", prevStart)
+            .lt("business_date", targetMonth),
+        ]);
+
+        if (currentResult.error || previousResult.error) {
+          setErrorMessage(
+            currentResult.error?.message ??
+              previousResult.error?.message ??
+              "実績取得エラー"
+          );
+          setLoading(false);
+          return;
+        }
+
+        setResults(currentResult.data ?? []);
+        setPreviousResults(previousResult.data ?? []);
+      } else {
         setResults([]);
-        setLoading(false);
-        return;
+        setPreviousResults([]);
       }
 
-      const { data: dailyData, error: dailyError } = await supabase
-        .from("daily_results")
-        .select("member_id,sales,champagne_count,visit_count")
-        .in(
-          "member_id",
-          allowedMembers.map((m) => m.id)
+      if (teamIds.length > 0) {
+        const { data, error } = await supabase
+          .from("team_goals")
+          .select(
+            "team_id,target_sales,champagne_target,visit_count_target"
+          )
+          .in("team_id", teamIds)
+          .eq("target_month", targetMonth);
+
+        if (error) {
+          setErrorMessage(error.message);
+          setLoading(false);
+          return;
+        }
+
+        setTeamGoals(data ?? []);
+      } else {
+        setTeamGoals([]);
+      }
+
+      if (departmentIds.length > 0) {
+        const { data, error } = await supabase
+          .from("department_goals")
+          .select(
+            "department_id,target_sales,champagne_target,visit_count_target"
+          )
+          .in("department_id", departmentIds)
+          .eq("target_month", targetMonth);
+
+        if (error) {
+          setErrorMessage(error.message);
+          setLoading(false);
+          return;
+        }
+
+        setDepartmentGoals(data ?? []);
+      } else {
+        setDepartmentGoals([]);
+      }
+
+      if (
+        ["business_manager", "company_manager", "chairman"].includes(
+          p.role
         )
-        .gte("business_date", startDate)
-        .lt("business_date", nextMonth);
+      ) {
+        const { data, error } = await supabase
+          .from("store_goals")
+          .select("target_sales,champagne_target,visit_count_target")
+          .eq("target_month", targetMonth)
+          .maybeSingle();
 
-      if (dailyError) {
-        setErrorMessage(dailyError.message);
-        setLoading(false);
-        return;
+        if (error) {
+          setErrorMessage(error.message);
+          setLoading(false);
+          return;
+        }
+
+        setStoreGoal(data ?? null);
+      } else {
+        setStoreGoal(null);
       }
 
-      setResults(dailyData ?? []);
       setLoading(false);
     }
 
     load();
   }, [router, supabase, month]);
 
-  const memberTotals = useMemo(() => {
-    const map = new Map<string, Row>();
+  const currentMemberMap = useMemo(() => {
+    const map = new Map<
+      string,
+      { sales: number; champagne: number; visits: number }
+    >();
 
     members.forEach((member) => {
       map.set(member.id, {
-        id: member.id,
-        name: member.name,
         sales: 0,
         champagne: 0,
         visits: 0,
@@ -220,76 +352,159 @@ export default function SummaryPage() {
     return map;
   }, [members, results]);
 
+  const previousMemberMap = useMemo(() => {
+    const map = new Map<string, number>();
+
+    members.forEach((member) => {
+      map.set(member.id, 0);
+    });
+
+    previousResults.forEach((r) => {
+      map.set(
+        r.member_id,
+        Number(map.get(r.member_id) ?? 0) + Number(r.sales ?? 0)
+      );
+    });
+
+    return map;
+  }, [members, previousResults]);
+
   const teamRows = useMemo(() => {
     return teams
       .map((team) => {
+        const goal = teamGoals.find((g) => g.team_id === team.id);
+
         const teamMembers = members.filter(
           (member) => member.team_id === team.id
         );
 
-        return teamMembers.reduce<Row>(
-          (sum, member) => {
-            const r = memberTotals.get(member.id);
-            if (!r) return sum;
+        let sales = 0;
+        let champagne = 0;
+        let visits = 0;
+        let previousSales = 0;
 
-            sum.sales += r.sales;
-            sum.champagne += r.champagne;
-            sum.visits += r.visits;
-            return sum;
-          },
-          {
-            id: team.id,
-            name: team.name,
-            sales: 0,
-            champagne: 0,
-            visits: 0,
-          }
-        );
+        teamMembers.forEach((member) => {
+          const current = currentMemberMap.get(member.id);
+
+          sales += current?.sales ?? 0;
+          champagne += current?.champagne ?? 0;
+          visits += current?.visits ?? 0;
+
+          previousSales += previousMemberMap.get(member.id) ?? 0;
+        });
+
+        return {
+          id: team.id,
+          name: team.name,
+          sales,
+          champagne,
+          visits,
+          previousSales,
+          targetSales: Number(goal?.target_sales ?? 0),
+          targetChampagne: Number(goal?.champagne_target ?? 0),
+          targetVisits: Number(goal?.visit_count_target ?? 0),
+        };
       })
       .sort((a, b) => b.sales - a.sales);
-  }, [teams, members, memberTotals]);
+  }, [
+    teams,
+    members,
+    teamGoals,
+    currentMemberMap,
+    previousMemberMap,
+  ]);
 
   const departmentRows = useMemo(() => {
     return departments
       .map((department) => {
-        const departmentTeamIds = teams
+        const goal = departmentGoals.find(
+          (g) => g.department_id === department.id
+        );
+
+        const ids = teams
           .filter((team) => team.department_id === department.id)
           .map((team) => team.id);
 
-        return teamRows
-          .filter((row) => departmentTeamIds.includes(row.id))
-          .reduce<Row>(
-            (sum, row) => {
-              sum.sales += row.sales;
-              sum.champagne += row.champagne;
-              sum.visits += row.visits;
-              return sum;
-            },
-            {
-              id: department.id,
-              name: department.name,
-              sales: 0,
-              champagne: 0,
-              visits: 0,
-            }
-          );
+        const related = teamRows.filter((row) => ids.includes(row.id));
+
+        return related.reduce<Row>(
+          (sum, row) => {
+            sum.sales += row.sales;
+            sum.champagne += row.champagne;
+            sum.visits += row.visits;
+            sum.previousSales += row.previousSales;
+            return sum;
+          },
+          {
+            id: department.id,
+            name: department.name,
+            sales: 0,
+            champagne: 0,
+            visits: 0,
+            previousSales: 0,
+            targetSales: Number(goal?.target_sales ?? 0),
+            targetChampagne: Number(goal?.champagne_target ?? 0),
+            targetVisits: Number(goal?.visit_count_target ?? 0),
+          }
+        );
       })
       .sort((a, b) => b.sales - a.sales);
-  }, [departments, teams, teamRows]);
+  }, [departments, departments, teams, teamRows, departmentGoals]);
 
-  const total = useMemo(
-    () =>
-      teamRows.reduce(
-        (sum, row) => {
-          sum.sales += row.sales;
-          sum.champagne += row.champagne;
-          sum.visits += row.visits;
-          return sum;
-        },
-        { sales: 0, champagne: 0, visits: 0 }
-      ),
-    [teamRows]
-  );
+  const total = useMemo(() => {
+    const base = teamRows.reduce(
+      (sum, row) => {
+        sum.sales += row.sales;
+        sum.champagne += row.champagne;
+        sum.visits += row.visits;
+        sum.previousSales += row.previousSales;
+        return sum;
+      },
+      {
+        sales: 0,
+        champagne: 0,
+        visits: 0,
+        previousSales: 0,
+      }
+    );
+
+    let targetSales = 0;
+    let targetChampagne = 0;
+    let targetVisits = 0;
+
+    if (storeGoal) {
+      targetSales = Number(storeGoal.target_sales ?? 0);
+      targetChampagne = Number(storeGoal.champagne_target ?? 0);
+      targetVisits = Number(storeGoal.visit_count_target ?? 0);
+    } else if (profile?.role === "department_manager") {
+      targetSales = departmentRows[0]?.targetSales ?? 0;
+      targetChampagne = departmentRows[0]?.targetChampagne ?? 0;
+      targetVisits = departmentRows[0]?.targetVisits ?? 0;
+    } else if (profile?.role === "team_manager") {
+      targetSales = teamRows[0]?.targetSales ?? 0;
+      targetChampagne = teamRows[0]?.targetChampagne ?? 0;
+      targetVisits = teamRows[0]?.targetVisits ?? 0;
+    }
+
+    return {
+      ...base,
+      targetSales,
+      targetChampagne,
+      targetVisits,
+    };
+  }, [teamRows, departmentRows, storeGoal, profile]);
+
+  const alerts = useMemo(() => {
+    return teamRows
+      .filter((row) => {
+        if (row.targetSales <= 0) return false;
+        return rate(row.sales, row.targetSales) < 70;
+      })
+      .sort(
+        (a, b) =>
+          rate(a.sales, a.targetSales) - rate(b.sales, b.targetSales)
+      );
+  }, [teamRows]);
 
   function roleLabel(role?: string) {
     switch (role) {
@@ -316,6 +531,17 @@ export default function SummaryPage() {
     );
   }
 
+  const totalSalesRate = rate(total.sales, total.targetSales);
+  const totalChampagneRate = rate(
+    total.champagne,
+    total.targetChampagne
+  );
+  const totalVisitRate = rate(total.visits, total.targetVisits);
+  const totalPreviousDiff = diffRate(
+    total.sales,
+    total.previousSales
+  );
+
   return (
     <main className="min-h-screen bg-black text-white pb-20">
       <div className="mx-auto w-full max-w-md px-5 pt-8">
@@ -327,9 +553,11 @@ export default function SummaryPage() {
           <p className="text-xs tracking-[0.3em] text-zinc-500">
             SWAMP-FOG
           </p>
+
           <h1 className="mt-2 text-3xl font-bold">
             集約ダッシュボード
           </h1>
+
           <p className="mt-2 text-sm text-zinc-500">
             {roleLabel(profile?.role)} VIEW
           </p>
@@ -337,6 +565,7 @@ export default function SummaryPage() {
 
         <label className="block mb-7">
           <span className="text-sm text-zinc-500">対象月</span>
+
           <input
             type="month"
             value={month}
@@ -355,29 +584,98 @@ export default function SummaryPage() {
           <p className="text-xs text-zinc-500">TOTAL RESULT</p>
           <h2 className="mt-2 text-xl font-bold">集約実績</h2>
 
-          <div className="mt-5 space-y-4">
-            <div>
-              <p className="text-sm text-zinc-500">売上</p>
-              <p className="text-3xl font-bold">{yen(total.sales)}</p>
+          <div className="mt-5">
+            <p className="text-sm text-zinc-500">売上</p>
+            <p className="text-3xl font-bold">{yen(total.sales)}</p>
+
+            {total.targetSales > 0 && (
+              <>
+                <div className="mt-3 h-2 overflow-hidden rounded-full bg-zinc-800">
+                  <div
+                    className="h-full bg-white"
+                    style={{
+                      width: `${Math.min(100, totalSalesRate)}%`,
+                    }}
+                  />
+                </div>
+
+                <div className="mt-2 flex justify-between text-xs text-zinc-500">
+                  <span>目標 {yen(total.targetSales)}</span>
+                  <span>{totalSalesRate}%</span>
+                </div>
+              </>
+            )}
+
+            <p className="mt-3 text-sm text-zinc-500">
+              前月 {yen(total.previousSales)}
+              {totalPreviousDiff !== null &&
+                ` / ${
+                  totalPreviousDiff >= 0 ? "+" : ""
+                }${totalPreviousDiff}%`}
+            </p>
+          </div>
+
+          <div className="mt-5 grid grid-cols-2 gap-3">
+            <div className="rounded-2xl bg-zinc-900 p-4">
+              <p className="text-xs text-zinc-500">オリシャン</p>
+              <p className="mt-1 text-2xl font-bold">
+                {total.champagne}本
+              </p>
+
+              {total.targetChampagne > 0 && (
+                <p className="mt-2 text-xs text-zinc-500">
+                  目標 {total.targetChampagne}本 / {totalChampagneRate}%
+                </p>
+              )}
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div className="rounded-2xl bg-zinc-900 p-4">
-                <p className="text-xs text-zinc-500">オリシャン</p>
-                <p className="mt-1 text-2xl font-bold">
-                  {total.champagne}本
-                </p>
-              </div>
+            <div className="rounded-2xl bg-zinc-900 p-4">
+              <p className="text-xs text-zinc-500">来店組数</p>
+              <p className="mt-1 text-2xl font-bold">
+                {total.visits}組
+              </p>
 
-              <div className="rounded-2xl bg-zinc-900 p-4">
-                <p className="text-xs text-zinc-500">来店組数</p>
-                <p className="mt-1 text-2xl font-bold">
-                  {total.visits}組
+              {total.targetVisits > 0 && (
+                <p className="mt-2 text-xs text-zinc-500">
+                  目標 {total.targetVisits}組 / {totalVisitRate}%
                 </p>
-              </div>
+              )}
             </div>
           </div>
         </section>
+
+        {alerts.length > 0 && (
+          <section className="mt-8 rounded-3xl border border-red-900 p-5">
+            <p className="text-xs text-red-400">ATTENTION</p>
+            <h2 className="mt-1 text-xl font-bold">
+              要確認チーム
+            </h2>
+
+            <p className="mt-2 text-sm text-zinc-500">
+              売上目標の達成率が70%未満
+            </p>
+
+            <div className="mt-4 space-y-3">
+              {alerts.map((row) => (
+                <div
+                  key={row.id}
+                  className="rounded-2xl bg-zinc-950 p-4"
+                >
+                  <div className="flex justify-between gap-3">
+                    <p className="font-bold">{row.name}</p>
+                    <p className="font-bold text-red-400">
+                      {rate(row.sales, row.targetSales)}%
+                    </p>
+                  </div>
+
+                  <p className="mt-2 text-sm text-zinc-500">
+                    {yen(row.sales)} / {yen(row.targetSales)}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
 
         {departmentRows.length > 0 && (
           <section className="mt-8">
@@ -385,20 +683,42 @@ export default function SummaryPage() {
             <h2 className="mt-1 text-xl font-bold">営業部別</h2>
 
             <div className="mt-4 space-y-3">
-              {departmentRows.map((row) => (
-                <div
-                  key={row.id}
-                  className="rounded-2xl border border-zinc-800 p-4"
-                >
-                  <p className="font-bold">{row.name}</p>
-                  <p className="mt-2 text-xl font-bold">
-                    {yen(row.sales)}
-                  </p>
-                  <p className="mt-2 text-sm text-zinc-500">
-                    オリシャン {row.champagne}本 / 来店 {row.visits}組
-                  </p>
-                </div>
-              ))}
+              {departmentRows.map((row) => {
+                const salesRate = rate(row.sales, row.targetSales);
+                const prevDiff = diffRate(
+                  row.sales,
+                  row.previousSales
+                );
+
+                return (
+                  <div
+                    key={row.id}
+                    className="rounded-2xl border border-zinc-800 p-4"
+                  >
+                    <p className="font-bold">{row.name}</p>
+
+                    <p className="mt-2 text-xl font-bold">
+                      {yen(row.sales)}
+                    </p>
+
+                    {row.targetSales > 0 && (
+                      <p className="mt-2 text-sm text-zinc-500">
+                        目標 {yen(row.targetSales)} / 達成率 {salesRate}%
+                      </p>
+                    )}
+
+                    <p className="mt-1 text-sm text-zinc-500">
+                      前月 {yen(row.previousSales)}
+                      {prevDiff !== null &&
+                        ` / ${prevDiff >= 0 ? "+" : ""}${prevDiff}%`}
+                    </p>
+
+                    <p className="mt-1 text-sm text-zinc-500">
+                      オリシャン {row.champagne}本 / 来店 {row.visits}組
+                    </p>
+                  </div>
+                );
+              })}
             </div>
           </section>
         )}
@@ -413,27 +733,58 @@ export default function SummaryPage() {
                 表示できるチームがありません
               </div>
             ) : (
-              teamRows.map((row, index) => (
-                <div
-                  key={row.id}
-                  className="rounded-2xl border border-zinc-800 p-4"
-                >
-                  <div className="flex items-center justify-between">
-                    <p className="font-bold">{row.name}</p>
-                    <p className="text-sm text-zinc-500">
-                      #{index + 1}
+              teamRows.map((row, index) => {
+                const salesRate = rate(row.sales, row.targetSales);
+                const prevDiff = diffRate(
+                  row.sales,
+                  row.previousSales
+                );
+
+                return (
+                  <div
+                    key={row.id}
+                    className="rounded-2xl border border-zinc-800 p-4"
+                  >
+                    <div className="flex items-center justify-between">
+                      <p className="font-bold">{row.name}</p>
+                      <p className="text-sm text-zinc-500">
+                        #{index + 1}
+                      </p>
+                    </div>
+
+                    <p className="mt-2 text-xl font-bold">
+                      {yen(row.sales)}
+                    </p>
+
+                    {row.targetSales > 0 && (
+                      <>
+                        <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-zinc-800">
+                          <div
+                            className="h-full bg-white"
+                            style={{
+                              width: `${Math.min(100, salesRate)}%`,
+                            }}
+                          />
+                        </div>
+
+                        <p className="mt-2 text-sm text-zinc-500">
+                          目標 {yen(row.targetSales)} / {salesRate}%
+                        </p>
+                      </>
+                    )}
+
+                    <p className="mt-1 text-sm text-zinc-500">
+                      前月 {yen(row.previousSales)}
+                      {prevDiff !== null &&
+                        ` / ${prevDiff >= 0 ? "+" : ""}${prevDiff}%`}
+                    </p>
+
+                    <p className="mt-1 text-sm text-zinc-500">
+                      オリシャン {row.champagne}本 / 来店 {row.visits}組
                     </p>
                   </div>
-
-                  <p className="mt-2 text-xl font-bold">
-                    {yen(row.sales)}
-                  </p>
-
-                  <p className="mt-2 text-sm text-zinc-500">
-                    オリシャン {row.champagne}本 / 来店 {row.visits}組
-                  </p>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </section>
