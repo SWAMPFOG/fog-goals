@@ -60,7 +60,6 @@ export default function DailyPage() {
 
   const [businessDate, setBusinessDate] = useState(todayJst());
   const [members, setMembers] = useState<Member[]>([]);
-  const [selectedTeamId, setSelectedTeamId] = useState("");
   const [rows, setRows] = useState<Record<string, DailyInput>>({});
   const [existingIds, setExistingIds] = useState<Set<string>>(new Set());
 
@@ -160,10 +159,6 @@ export default function DailyPage() {
 
         const departmentTeamIds = (departmentTeams ?? []).map((team) => team.id);
 
-        if (!selectedTeamId && departmentTeamIds.length > 0) {
-          setSelectedTeamId(departmentTeamIds[0]);
-        }
-
         if (departmentTeamIds.length === 0) {
           setMembers([]);
           setRows({});
@@ -171,9 +166,7 @@ export default function DailyPage() {
           return;
         }
 
-        memberQuery = selectedTeamId
-          ? memberQuery.eq("team_id", selectedTeamId)
-          : memberQuery.eq("team_id", departmentTeamIds[0]);
+        memberQuery = memberQuery.in("team_id", departmentTeamIds);
       } else if (currentRole === "member") {
         setMembers([]);
         setRows({});
@@ -203,7 +196,7 @@ export default function DailyPage() {
     }
 
     loadBase();
-  }, [supabase, selectedTeamId]);
+  }, [supabase]);
 
   useEffect(() => {
     if (members.length === 0 || !businessDate) return;
