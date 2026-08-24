@@ -728,6 +728,7 @@ function Field({
         min="0"
         value={value}
         disabled={disabled}
+        onFocus={(e) => e.currentTarget.select()}
         onChange={(e) => onChange(e.target.value)}
         placeholder="0"
         className="mt-2 w-full rounded-xl border border-zinc-800 bg-black px-3 py-3 text-white disabled:opacity-60"
