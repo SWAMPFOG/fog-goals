@@ -575,6 +575,11 @@ export default function DailyPage() {
                     }
                   />
 
+                  <details className="col-span-2 rounded-xl border border-zinc-800 px-3 py-2">
+                    <summary className="cursor-pointer text-sm font-bold text-zinc-300">
+                      営業行動の詳細
+                    </summary>
+                    <div className="mt-3 grid grid-cols-2 gap-3">
                   <Field
                     label="初回"
                     value={row.first_contact_count}
@@ -631,6 +636,8 @@ export default function DailyPage() {
                       )
                     }
                   />
+                    </div>
+                  </details>
                 </div>
 
                 <label className="mt-3 block">
