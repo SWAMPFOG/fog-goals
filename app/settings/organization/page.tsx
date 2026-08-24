@@ -376,6 +376,15 @@ export default function OrganizationPage() {
           </div>
         )}
 
+        <div className="mb-6">
+          <Link
+            href="/settings/organization/inactive"
+            className="block w-full rounded-2xl border border-zinc-800 p-4 text-center font-bold"
+          >
+            無効一覧・復元
+          </Link>
+        </div>
+
         <section className="mb-6 rounded-3xl border border-zinc-800 bg-zinc-950 p-5">
           <p className="text-xs text-zinc-500">
             TEAM
