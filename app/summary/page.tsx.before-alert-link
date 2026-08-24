@@ -695,10 +695,9 @@ export default function SummaryPage() {
 
             <div className="mt-4 space-y-3">
               {alerts.map((row) => (
-                <Link
+                <div
                   key={row.id}
-                  href={`/teams/${row.id}`}
-                  className="block rounded-2xl bg-zinc-950 p-4 transition active:scale-[0.99]"
+                  className="rounded-2xl bg-zinc-950 p-4"
                 >
                   <div className="flex items-center justify-between gap-3">
                     <div>
@@ -717,23 +716,17 @@ export default function SummaryPage() {
                       </p>
                     </div>
 
-                    <div className="text-right">
-                      <p
-                        className={`font-bold ${
-                          row.priority === "最優先"
-                            ? "text-red-400"
-                            : row.priority === "要確認"
-                              ? "text-orange-400"
-                              : "text-yellow-400"
-                        }`}
-                      >
-                        {row.currentRate}%
-                      </p>
-
-                      <p className="mt-1 text-xs text-zinc-600">
-                        詳細 →
-                      </p>
-                    </div>
+                    <p
+                      className={`font-bold ${
+                        row.priority === "最優先"
+                          ? "text-red-400"
+                          : row.priority === "要確認"
+                            ? "text-orange-400"
+                            : "text-yellow-400"
+                      }`}
+                    >
+                      {row.currentRate}%
+                    </p>
                   </div>
 
                   <p className="mt-2 text-sm text-zinc-500">
@@ -743,7 +736,7 @@ export default function SummaryPage() {
                   <p className="mt-1 text-sm text-zinc-500">
                     基準との差 -{row.gap}pt
                   </p>
-                </Link>
+                </div>
               ))}
             </div>
           </section>
