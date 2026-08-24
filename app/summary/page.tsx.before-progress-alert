@@ -92,21 +92,6 @@ function diffRate(current: number, previous: number) {
   return Math.round(((current - previous) / previous) * 1000) / 10;
 }
 
-function monthProgress(month: string) {
-  const now = new Date();
-  const [year, monthNumber] = month.split("-").map(Number);
-
-  const selectedStart = new Date(year, monthNumber - 1, 1);
-  const currentStart = new Date(now.getFullYear(), now.getMonth(), 1);
-
-  if (selectedStart < currentStart) return 100;
-  if (selectedStart > currentStart) return 0;
-
-  const daysInMonth = new Date(year, monthNumber, 0).getDate();
-
-  return Math.round((now.getDate() / daysInMonth) * 1000) / 10;
-}
-
 export default function SummaryPage() {
   const router = useRouter();
   const [supabase] = useState(() => createClient());
@@ -509,21 +494,17 @@ export default function SummaryPage() {
     };
   }, [teamRows, departmentRows, storeGoal, profile]);
 
-  const expectedProgress = monthProgress(month);
-
   const alerts = useMemo(() => {
     return teamRows
       .filter((row) => {
         if (row.targetSales <= 0) return false;
-        if (expectedProgress <= 0) return false;
-
-        return rate(row.sales, row.targetSales) < expectedProgress;
+        return rate(row.sales, row.targetSales) < 70;
       })
       .sort(
         (a, b) =>
           rate(a.sales, a.targetSales) - rate(b.sales, b.targetSales)
       );
-  }, [teamRows, expectedProgress]);
+  }, [teamRows]);
 
   function roleLabel(role?: string) {
     switch (role) {
@@ -671,11 +652,7 @@ export default function SummaryPage() {
             </h2>
 
             <p className="mt-2 text-sm text-zinc-500">
-              月の経過率より売上進捗が遅れています
-            </p>
-
-            <p className="mt-1 text-sm text-zinc-500">
-              現在の進捗基準 {expectedProgress}%
+              売上目標の達成率が70%未満
             </p>
 
             <div className="mt-4 space-y-3">
