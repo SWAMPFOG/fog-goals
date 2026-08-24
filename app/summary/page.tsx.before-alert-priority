@@ -519,25 +519,10 @@ export default function SummaryPage() {
 
         return rate(row.sales, row.targetSales) < expectedProgress;
       })
-      .map((row) => {
-        const currentRate = rate(row.sales, row.targetSales);
-        const gap = Math.round((expectedProgress - currentRate) * 10) / 10;
-
-        const priority =
-          gap >= 30
-            ? "最優先"
-            : gap >= 10
-              ? "要確認"
-              : "注意";
-
-        return {
-          ...row,
-          currentRate,
-          gap,
-          priority,
-        };
-      })
-      .sort((a, b) => b.gap - a.gap);
+      .sort(
+        (a, b) =>
+          rate(a.sales, a.targetSales) - rate(b.sales, b.targetSales)
+      );
   }, [teamRows, expectedProgress]);
 
   function roleLabel(role?: string) {
@@ -699,42 +684,15 @@ export default function SummaryPage() {
                   key={row.id}
                   className="rounded-2xl bg-zinc-950 p-4"
                 >
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="font-bold">{row.name}</p>
-
-                      <p
-                        className={`mt-1 text-xs font-bold ${
-                          row.priority === "最優先"
-                            ? "text-red-400"
-                            : row.priority === "要確認"
-                              ? "text-orange-400"
-                              : "text-yellow-400"
-                        }`}
-                      >
-                        {row.priority}
-                      </p>
-                    </div>
-
-                    <p
-                      className={`font-bold ${
-                        row.priority === "最優先"
-                          ? "text-red-400"
-                          : row.priority === "要確認"
-                            ? "text-orange-400"
-                            : "text-yellow-400"
-                      }`}
-                    >
-                      {row.currentRate}%
+                  <div className="flex justify-between gap-3">
+                    <p className="font-bold">{row.name}</p>
+                    <p className="font-bold text-red-400">
+                      {rate(row.sales, row.targetSales)}%
                     </p>
                   </div>
 
                   <p className="mt-2 text-sm text-zinc-500">
                     {yen(row.sales)} / {yen(row.targetSales)}
-                  </p>
-
-                  <p className="mt-1 text-sm text-zinc-500">
-                    基準との差 -{row.gap}pt
                   </p>
                 </div>
               ))}
