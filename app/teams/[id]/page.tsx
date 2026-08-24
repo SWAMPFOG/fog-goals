@@ -78,6 +78,7 @@ export default function TeamDetailPage() {
   const [team, setTeam] = useState<Team | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
   const [results, setResults] = useState<DailyResult[]>([]);
+  const [todayDailyCount, setTodayDailyCount] = useState(0);
   const [goal, setGoal] = useState<TeamGoal | null>(null);
 
   const [memberGoals, setMemberGoals] = useState<
@@ -258,6 +259,28 @@ export default function TeamDetailPage() {
       setTeam(teamResult.data);
       setMembers(membersResult.data ?? []);
       setResults(dailyResult.data ?? []);
+
+      const todayParts = new Intl.DateTimeFormat("en-US", {
+        timeZone: "Asia/Tokyo",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).formatToParts(new Date());
+
+      const yearToday = todayParts.find((p) => p.type === "year")?.value;
+      const monthToday = todayParts.find((p) => p.type === "month")?.value;
+      const dayToday = todayParts.find((p) => p.type === "day")?.value;
+      const today = `${yearToday}-${monthToday}-${dayToday}`;
+
+      const { data: todayDaily } = await supabase
+        .from("daily_results")
+        .select("member_id")
+        .eq("team_id", teamId)
+        .eq("business_date", today);
+
+      setTodayDailyCount(
+        new Set((todayDaily ?? []).map((row) => row.member_id)).size
+      );
 
       const { data: memberGoalData, error: memberGoalError } =
         await supabase
@@ -839,6 +862,15 @@ export default function TeamDetailPage() {
             </div>
           </div>
         </section>
+        <div className="mt-6 rounded-2xl border border-zinc-800 bg-zinc-950 p-4">
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-zinc-500">本日の日報</span>
+            <span className="font-bold">
+              {todayDailyCount} / {members.length}名 入力済み
+            </span>
+          </div>
+        </div>
+
         {canEditThisTeam && (
           <Link
             href={`/daily?team=${teamId}`}
