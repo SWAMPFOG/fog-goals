@@ -659,15 +659,17 @@ export default function DailyPage() {
         </div>
 
         {canEdit && (
-          <button
-            onClick={saveAll}
-            disabled={saving}
-            className="mt-6 w-full rounded-2xl bg-white py-4 font-bold text-black disabled:opacity-50"
-          >
-            {saving
-              ? "保存中..."
-              : "入力した日報を一括保存"}
-          </button>
+          <div className="sticky bottom-16 z-40 mt-6 bg-black/95 py-3">
+            <button
+              onClick={saveAll}
+              disabled={saving}
+              className="w-full rounded-2xl bg-white py-4 font-bold text-black shadow-lg disabled:opacity-50"
+            >
+              {saving
+                ? "保存中..."
+                : "入力した日報を一括保存"}
+            </button>
+          </div>
         )}
 
         {message && (
