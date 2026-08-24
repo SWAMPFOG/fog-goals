@@ -648,8 +648,8 @@ export default function DailyPage() {
                         e.target.value
                       )
                     }
-                    rows={2}
-                    className="mt-2 w-full rounded-xl border border-zinc-800 bg-black px-3 py-3 text-sm text-white disabled:opacity-60"
+                    rows={1}
+                    className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-black px-3 py-2.5 text-sm text-white disabled:opacity-60"
                     placeholder="必要な場合のみ入力"
                   />
                 </label>
@@ -740,7 +740,7 @@ function Field({
         onFocus={(e) => e.currentTarget.select()}
         onChange={(e) => onChange(e.target.value)}
         placeholder="0"
-        className="mt-2 w-full rounded-xl border border-zinc-800 bg-black px-3 py-3 text-white disabled:opacity-60"
+        className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-black px-3 py-2.5 text-white disabled:opacity-60"
       />
     </label>
   );
