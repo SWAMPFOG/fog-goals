@@ -191,7 +191,7 @@ export default function OrganizationPage() {
   async function editMember(member: {
     id: string;
     name: string;
-    team_id: string | null;
+    team_id: string;
   }) {
     const name = window.prompt("メンバー名を変更", member.name);
     if (name === null || !name.trim()) return;
