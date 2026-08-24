@@ -261,7 +261,18 @@ export default function HomePage() {
               {profile.role === "cast" && profile.member_id && <Link href={`/members/${profile.member_id}`} className="rounded-2xl border border-zinc-800 p-4"><p className="text-xs text-zinc-500">PERSONAL</p><p className="mt-1 font-bold">自分の目標</p></Link>}
               {profile.role === "team_manager" && profile.team_id && <><Link href={`/teams/${profile.team_id}`} className="rounded-2xl border border-zinc-800 p-4"><p className="text-xs text-zinc-500">TEAM</p><p className="mt-1 font-bold">自チーム</p></Link><Link href="/daily" className="rounded-2xl border border-zinc-800 p-4"><p className="text-xs text-zinc-500">DAILY</p><p className="mt-1 font-bold">日報入力</p></Link></>}
               {profile.role === "department_manager" && profile.department_id && <><Link href={`/departments/${profile.department_id}`} className="rounded-2xl border border-zinc-800 p-4"><p className="text-xs text-zinc-500">DEPARTMENT</p><p className="mt-1 font-bold">担当営業部</p></Link><Link href="/teams" className="rounded-2xl border border-zinc-800 p-4"><p className="text-xs text-zinc-500">TEAMS</p><p className="mt-1 font-bold">チーム確認</p></Link><Link href="/daily" className="rounded-2xl border border-zinc-800 p-4"><p className="text-xs text-zinc-500">DAILY</p><p className="mt-1 font-bold">日報確認</p></Link></>}
-              {storeView && <><Link href="/teams" className="rounded-2xl border border-zinc-800 p-4"><p className="text-xs text-zinc-500">TEAMS</p><p className="mt-1 font-bold">全チーム</p></Link><Link href="/members" className="rounded-2xl border border-zinc-800 p-4"><p className="text-xs text-zinc-500">MEMBERS</p><p className="mt-1 font-bold">全メンバー</p></Link><Link href="/daily" className="rounded-2xl border border-zinc-800 p-4"><p className="text-xs text-zinc-500">DAILY</p><p className="mt-1 font-bold">日報管理</p></Link><Link href="/settings" className="rounded-2xl border border-zinc-800 p-4"><p className="text-xs text-zinc-500">SETTING</p><p className="mt-1 font-bold">目標設定</p></Link></>}
+              {storeView && <><Link href="/teams" className="rounded-2xl border border-zinc-800 p-4"><p className="text-xs text-zinc-500">TEAMS</p><p className="mt-1 font-bold">全チーム</p></Link><Link href="/members" className="rounded-2xl border border-zinc-800 p-4"><p className="text-xs text-zinc-500">MEMBERS</p><p className="mt-1 font-bold">全メンバー</p></Link><Link href="/daily" className="rounded-2xl border border-zinc-800 p-4"><p className="text-xs text-zinc-500">DAILY</p><p className="mt-1 font-bold">日報管理</p></Link><Link
+          href="/summary"
+          className="block rounded-3xl border border-zinc-800 p-5"
+        >
+          <p className="text-xs text-zinc-500">MANAGEMENT</p>
+          <p className="mt-2 text-xl font-bold">集約ダッシュボード</p>
+          <p className="mt-2 text-sm text-zinc-500">
+            部責・業責・社責・会長向け集約
+          </p>
+        </Link>
+
+        <Link href="/settings" className="rounded-2xl border border-zinc-800 p-4"><p className="text-xs text-zinc-500">SETTING</p><p className="mt-1 font-bold">目標設定</p></Link></>}
             </div>
           </section>
         )}
