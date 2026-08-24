@@ -851,45 +851,7 @@ export default function TeamDetailPage() {
           </h2>
 
           <div className="mt-4 space-y-3">
-            {[...members]
-              .sort((a, b) => {
-                const goalA = memberGoals.find(
-                  (row) => row.member_id === a.id
-                );
-                const goalB = memberGoals.find(
-                  (row) => row.member_id === b.id
-                );
-
-                const targetA = Number(goalA?.target_sales ?? 0);
-                const targetB = Number(goalB?.target_sales ?? 0);
-
-                const salesA = results
-                  .filter((row) => row.member_id === a.id)
-                  .reduce(
-                    (sum, row) => sum + Number(row.sales ?? 0),
-                    0
-                  );
-
-                const salesB = results
-                  .filter((row) => row.member_id === b.id)
-                  .reduce(
-                    (sum, row) => sum + Number(row.sales ?? 0),
-                    0
-                  );
-
-                // 目標未設定者は下へ
-                if (targetA <= 0 && targetB > 0) return 1;
-                if (targetB <= 0 && targetA > 0) return -1;
-
-                const rateA =
-                  targetA > 0 ? salesA / targetA : 999;
-                const rateB =
-                  targetB > 0 ? salesB / targetB : 999;
-
-                // 達成率が低い人を上へ
-                return rateA - rateB;
-              })
-              .map((member) => {
+            {members.map((member) => {
               const memberGoal = memberGoals.find(
                 (row) => row.member_id === member.id
               );
