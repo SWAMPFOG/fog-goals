@@ -153,7 +153,7 @@ export default function SettingsPage() {
   if (!canEditStoreGoal(role)) {
     return (
       <main className="min-h-screen bg-black text-white p-6">
-        <div className="mx-auto max-w-md">
+        <div className="mx-auto max-w-md px-4">
           <p className="text-xs tracking-[0.3em] text-zinc-500">
             SWAMP-FOG
           </p>
@@ -185,7 +185,7 @@ export default function SettingsPage() {
 
   return (
     <main className="min-h-screen bg-black text-white pb-24">
-      <div className="mx-auto w-full max-w-md px-5 pt-0">
+      <div className="mx-auto w-full max-w-md px-5 pt-4">
         <Link
           href="/"
           className="text-sm text-zinc-500"

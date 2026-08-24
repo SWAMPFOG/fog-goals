@@ -372,7 +372,7 @@ export default function DailyPage() {
   if (!canEdit) {
     return (
       <main className="min-h-screen bg-black text-white p-6">
-        <div className="mx-auto max-w-md">
+        <div className="mx-auto max-w-md px-4">
           <p className="text-xs tracking-[0.3em] text-zinc-500">
             SWAMP-FOG
           </p>
