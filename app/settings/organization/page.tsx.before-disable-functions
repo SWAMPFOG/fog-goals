@@ -146,53 +146,6 @@ export default function OrganizationPage() {
   }
 
 
-
-  async function disableTeam(team: {
-    id: string;
-    name: string;
-  }) {
-    const ok = window.confirm(
-      `「${team.name}」を無効化しますか？\n\nデータは削除されません。`
-    );
-
-    if (!ok) return;
-
-    const { error } = await supabase
-      .from("teams")
-      .update({ is_active: false })
-      .eq("id", team.id);
-
-    if (error) {
-      window.alert("無効化エラー: " + error.message);
-      return;
-    }
-
-    window.location.reload();
-  }
-
-  async function disableMember(member: {
-    id: string;
-    name: string;
-  }) {
-    const ok = window.confirm(
-      `「${member.name}」を無効化しますか？\n\nデータは削除されません。`
-    );
-
-    if (!ok) return;
-
-    const { error } = await supabase
-      .from("members")
-      .update({ is_active: false })
-      .eq("id", member.id);
-
-    if (error) {
-      window.alert("無効化エラー: " + error.message);
-      return;
-    }
-
-    window.location.reload();
-  }
-
   async function editTeam(team: {
     id: string;
     name: string;
@@ -513,23 +466,13 @@ export default function OrganizationPage() {
     </p>
   </div>
 
-  <div className="flex shrink-0 gap-2">
-    <button
-      type="button"
-      onClick={() => editTeam(team)}
-      className="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-bold text-white"
-    >
-      編集
-    </button>
-
-    <button
-      type="button"
-      onClick={() => disableTeam(team)}
-      className="rounded-xl border border-red-900 px-4 py-2 text-sm font-bold text-red-400"
-    >
-      無効化
-    </button>
-  </div>
+  <button
+    type="button"
+    onClick={() => editTeam(team)}
+    className="shrink-0 rounded-xl border border-zinc-700 px-4 py-2 text-sm font-bold text-white"
+  >
+    編集
+  </button>
 </div>
 
               </div>
@@ -564,23 +507,13 @@ export default function OrganizationPage() {
     </p>
   </div>
 
-  <div className="flex shrink-0 gap-2">
-    <button
-      type="button"
-      onClick={() => editMember(member)}
-      className="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-bold text-white"
-    >
-      編集
-    </button>
-
-    <button
-      type="button"
-      onClick={() => disableMember(member)}
-      className="rounded-xl border border-red-900 px-4 py-2 text-sm font-bold text-red-400"
-    >
-      無効化
-    </button>
-  </div>
+  <button
+    type="button"
+    onClick={() => editMember(member)}
+    className="shrink-0 rounded-xl border border-zinc-700 px-4 py-2 text-sm font-bold text-white"
+  >
+    編集
+  </button>
 </div>
 
               </div>
