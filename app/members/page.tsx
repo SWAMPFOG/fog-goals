@@ -19,6 +19,13 @@ export default function MembersPage() {
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
   const [teamName, setTeamName] = useState("");
+  const [teams, setTeams] = useState<{ id: string; name: string }[]>([]);
+  const [canAddMember, setCanAddMember] = useState(false);
+  const [addTeamId, setAddTeamId] = useState("");
+  const [newMemberName, setNewMemberName] = useState("");
+  const [addingMember, setAddingMember] = useState(false);
+  const [addMessage, setAddMessage] = useState("");
+
 
   useEffect(() => {
     async function loadMembers() {
@@ -46,6 +53,30 @@ export default function MembersPage() {
       }
 
       const role = normalizeRole(profile?.role ?? null);
+
+      const upperRoles = ["business_manager", "company_manager", "chairman"];
+
+      if (role === "team_manager" && profile?.team_id) {
+        setCanAddMember(true);
+        setAddTeamId(profile.team_id);
+      } else if (upperRoles.includes(role)) {
+        setCanAddMember(true);
+
+        const { data: teamData } = await supabase
+          .from("teams")
+          .select("id, name")
+          .eq("is_active", true)
+          .order("display_order");
+
+        setTeams(teamData ?? []);
+
+        if ((teamData ?? []).length > 0) {
+          setAddTeamId(teamData![0].id);
+        }
+      } else {
+        setCanAddMember(false);
+      }
+
 
       if (role === "member") {
         if (!profile?.member_id) {
@@ -128,6 +159,44 @@ export default function MembersPage() {
     loadMembers();
   }, [router, supabase]);
 
+  async function addMember() {
+    const name = newMemberName.trim();
+
+    if (!canAddMember || !addTeamId || !name) return;
+
+    setAddingMember(true);
+    setAddMessage("");
+
+    const { data: lastMember } = await supabase
+      .from("members")
+      .select("display_order")
+      .eq("team_id", addTeamId)
+      .order("display_order", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    const nextOrder = Number(lastMember?.display_order ?? 0) + 1;
+
+    const { error } = await supabase
+      .from("members")
+      .insert({
+        name,
+        team_id: addTeamId,
+        display_order: nextOrder,
+        is_active: true,
+      });
+
+    if (error) {
+      setAddMessage("ERROR: " + error.message);
+      setAddingMember(false);
+      return;
+    }
+
+    setNewMemberName("");
+    setAddMessage("追加しました");
+    window.location.reload();
+  }
+
   return (
     <main className="min-h-screen bg-black text-white pb-24">
       <div className="mx-auto w-full max-w-md px-5 pt-4">
@@ -144,6 +213,47 @@ export default function MembersPage() {
             {teamName}
           </p>
         </header>
+
+        {canAddMember && (
+          <section className="mb-5 rounded-2xl border border-zinc-800 bg-zinc-950 p-4">
+            <p className="text-sm font-bold">新規メンバー追加</p>
+
+            {teams.length > 0 && (
+              <select
+                value={addTeamId}
+                onChange={(e) => setAddTeamId(e.target.value)}
+                className="mt-3 w-full rounded-xl border border-zinc-800 bg-black px-3 py-3 text-white"
+              >
+                {teams.map((team) => (
+                  <option key={team.id} value={team.id}>
+                    {team.name}
+                  </option>
+                ))}
+              </select>
+            )}
+
+            <div className="mt-3 flex gap-2">
+              <input
+                value={newMemberName}
+                onChange={(e) => setNewMemberName(e.target.value)}
+                placeholder="メンバー名"
+                className="min-w-0 flex-1 rounded-xl border border-zinc-800 bg-black px-3 py-3 text-white"
+              />
+
+              <button
+                onClick={addMember}
+                disabled={addingMember || !newMemberName.trim() || !addTeamId}
+                className="rounded-xl bg-white px-4 font-bold text-black disabled:opacity-40"
+              >
+                {addingMember ? "追加中" : "追加"}
+              </button>
+            </div>
+
+            {addMessage && (
+              <p className="mt-2 text-xs text-zinc-400">{addMessage}</p>
+            )}
+          </section>
+        )}
 
         {loading ? (
           <p className="text-zinc-500">読み込み中...</p>
