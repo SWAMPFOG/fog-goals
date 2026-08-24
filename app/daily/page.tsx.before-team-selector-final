@@ -61,9 +61,6 @@ export default function DailyPage() {
   const [businessDate, setBusinessDate] = useState(todayJst());
   const [members, setMembers] = useState<Member[]>([]);
   const [selectedTeamId, setSelectedTeamId] = useState("");
-  const [teamOptions, setTeamOptions] = useState<
-    { id: string; name: string }[]
-  >([]);
   const [rows, setRows] = useState<Record<string, DailyInput>>({});
   const [existingIds, setExistingIds] = useState<Set<string>>(new Set());
 
@@ -151,7 +148,7 @@ export default function DailyPage() {
         const { data: departmentTeams, error: departmentTeamsError } =
           await supabase
             .from("teams")
-            .select("id, name")
+            .select("id")
             .eq("department_id", currentDepartmentId)
             .eq("is_active", true);
 
@@ -162,13 +159,6 @@ export default function DailyPage() {
         }
 
         const departmentTeamIds = (departmentTeams ?? []).map((team) => team.id);
-
-        setTeamOptions(
-          (departmentTeams ?? []).map((team) => ({
-            id: team.id,
-            name: team.name,
-          }))
-        );
 
         if (!selectedTeamId && departmentTeamIds.length > 0) {
           setSelectedTeamId(departmentTeamIds[0]);
@@ -434,29 +424,6 @@ export default function DailyPage() {
         <p className="mt-1 text-sm text-zinc-500">
           DAILY RESULT
         </p>
-
-        {normalizedRole === "department_manager" &&
-          teamOptions.length > 0 && (
-            <section className="mt-6">
-              <label className="block">
-                <span className="text-sm text-zinc-500">
-                  入力するチーム
-                </span>
-
-                <select
-                  value={selectedTeamId}
-                  onChange={(e) => setSelectedTeamId(e.target.value)}
-                  className="mt-2 w-full rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-4 text-white"
-                >
-                  {teamOptions.map((team) => (
-                    <option key={team.id} value={team.id}>
-                      {team.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </section>
-          )}
 
         <section className="mt-8 rounded-2xl border border-zinc-800 p-4">
           <label className="block">
