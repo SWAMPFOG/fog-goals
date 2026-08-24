@@ -103,8 +103,6 @@ export default function DailyPage() {
 
       const currentRole = normalizeRole(profile?.role ?? null);
       const currentTeamId = profile?.team_id ?? null;
-      const requestedTeamId =
-        new URLSearchParams(window.location.search).get("team");
 
       setRole(profile?.role ?? "");
       let currentDepartmentId: string | null = null;
@@ -141,26 +139,56 @@ export default function DailyPage() {
         }
 
         memberQuery = memberQuery.eq("team_id", currentTeamId);
+      } else if (currentRole === "department_manager") {
+        if (!currentDepartmentId) {
+          setMembers([]);
+          setRows({});
+          setMessage("ERROR: 所属営業部が未設定です");
+          setLoading(false);
+          return;
+        }
+
+        const { data: departmentTeams, error: departmentTeamsError } =
+          await supabase
+            .from("teams")
+            .select("id, name")
+            .eq("department_id", currentDepartmentId)
+            .eq("is_active", true);
+
+        if (departmentTeamsError) {
+          setMessage("ERROR: " + departmentTeamsError.message);
+          setLoading(false);
+          return;
+        }
+
+        const departmentTeamIds = (departmentTeams ?? []).map((team) => team.id);
+
+        setTeamOptions(
+          (departmentTeams ?? []).map((team) => ({
+            id: team.id,
+            name: team.name,
+          }))
+        );
+
+        if (!selectedTeamId && departmentTeamIds.length > 0) {
+          setSelectedTeamId(departmentTeamIds[0]);
+        }
+
+        if (departmentTeamIds.length === 0) {
+          setMembers([]);
+          setRows({});
+          setLoading(false);
+          return;
+        }
+
+        memberQuery = selectedTeamId
+          ? memberQuery.eq("team_id", selectedTeamId)
+          : memberQuery.eq("team_id", departmentTeamIds[0]);
       } else if (currentRole === "member") {
         setMembers([]);
         setRows({});
         setLoading(false);
         return;
-      }
-
-      if (requestedTeamId) {
-        if (
-          currentRole === "team_manager" &&
-          requestedTeamId !== currentTeamId
-        ) {
-          setMembers([]);
-          setRows({});
-          setMessage("ERROR: 他チームの日報は編集できません");
-          setLoading(false);
-          return;
-        }
-
-        memberQuery = memberQuery.eq("team_id", requestedTeamId);
       }
 
       const { data, error } = await memberQuery;
@@ -185,7 +213,7 @@ export default function DailyPage() {
     }
 
     loadBase();
-  }, [supabase]);
+  }, [supabase, selectedTeamId]);
 
   useEffect(() => {
     if (members.length === 0 || !businessDate) return;

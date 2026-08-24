@@ -736,7 +736,8 @@ export default function TeamDetailPage() {
             </div>
           </section>
         )}
-<section className="mt-6 rounded-3xl border border-zinc-800 bg-zinc-950 p-5">
+
+        <section className="mt-6 rounded-3xl border border-zinc-800 bg-zinc-950 p-5">
           <p className="text-xs text-zinc-500">
             TEAM MONTHLY RESULT
           </p>
@@ -839,16 +840,6 @@ export default function TeamDetailPage() {
             </div>
           </div>
         </section>
-        {canEditThisTeam && (
-          <Link
-            href={`/daily?team=${teamId}`}
-            className="mt-6 block w-full rounded-2xl bg-white py-4 text-center font-bold text-black"
-          >
-            このチームの日報を入力・更新
-          </Link>
-        )}
-
-
 
         <section className="mt-6">
           <p className="text-xs text-zinc-500">
