@@ -53,21 +53,6 @@ function rate(current: number, target: number) {
   return Math.min(100, Math.round((current / target) * 100));
 }
 
-function monthProgress(month: string) {
-  const now = new Date();
-  const [year, monthNumber] = month.split("-").map(Number);
-
-  const selectedStart = new Date(year, monthNumber - 1, 1);
-  const currentStart = new Date(now.getFullYear(), now.getMonth(), 1);
-
-  if (selectedStart < currentStart) return 100;
-  if (selectedStart > currentStart) return 0;
-
-  const daysInMonth = new Date(year, monthNumber, 0).getDate();
-
-  return Math.round((now.getDate() / daysInMonth) * 1000) / 10;
-}
-
 export default function TeamDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -340,9 +325,6 @@ export default function TeamDetailPage() {
   const visitGoal = goal?.visit_count_target ?? 0;
 
   const salesRate = rate(totals.sales, salesTarget);
-  const expectedProgress = monthProgress(month);
-  const progressGap =
-    Math.round((salesRate - expectedProgress) * 10) / 10;
   const salesRemaining = Math.max(0, salesTarget - totals.sales);
 
   const champagneRate = rate(totals.champagne, champagneGoal);
@@ -600,42 +582,6 @@ export default function TeamDetailPage() {
               達成率 {salesRate}%
             </span>
           </div>
-
-          {salesTarget > 0 && expectedProgress > 0 && (
-            <div className="mt-4 rounded-2xl border border-zinc-800 bg-black p-4">
-              <div className="flex justify-between text-sm">
-                <span className="text-zinc-500">
-                  現在の進捗基準
-                </span>
-                <span className="font-bold">
-                  {expectedProgress}%
-                </span>
-              </div>
-
-              <div className="mt-2 flex justify-between text-sm">
-                <span className="text-zinc-500">
-                  基準との差
-                </span>
-
-                <span
-                  className={`font-bold ${
-                    progressGap < 0
-                      ? "text-red-400"
-                      : "text-green-400"
-                  }`}
-                >
-                  {progressGap > 0 ? "+" : ""}
-                  {progressGap}pt
-                </span>
-              </div>
-
-              <p className="mt-3 text-xs text-zinc-500">
-                {progressGap >= 0
-                  ? "現在のペースは基準以上です"
-                  : "現在のペースは基準より遅れています"}
-              </p>
-            </div>
-          )}
 
           <p className="mt-4 text-sm text-zinc-400">
             残り {yen(salesRemaining)}
