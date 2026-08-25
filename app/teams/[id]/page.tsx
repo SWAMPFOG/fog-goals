@@ -617,7 +617,7 @@ export default function TeamDetailPage() {
             />
           </div>
 
-          <div className="mt-3 flex justify-between text-xs text-zinc-500">
+          <div className="mt-4 flex justify-between text-sm text-zinc-400">
             <span>現在 {yen(totals.sales)}</span>
             <span>
               達成率 {salesRate}%
@@ -655,9 +655,12 @@ export default function TeamDetailPage() {
             </div>
           )}
 
-          <p className="mt-4 text-sm text-zinc-400">
-            残り {yen(salesRemaining)}
-          </p>
+          <div className="mt-5 rounded-2xl border border-zinc-800 bg-black p-4">
+            <p className="text-xs text-zinc-500">目標まであと</p>
+            <p className="mt-1 text-3xl font-bold">
+              {yen(salesRemaining)}
+            </p>
+          </div>
         </section>
 
         <section className="mt-3 grid grid-cols-2 gap-3">
