@@ -187,22 +187,43 @@ export default function HomePage() {
         setResults(data ?? []);
       }
 
-      // 店舗目標は業責以上だけ取得・表示する。
+      // 業責以上は店舗目標、部責は自チーム目標を取得
       if (["business_manager", "company_manager", "chairman"].includes(p.role)) {
         const { data: goalData, error: goalError } = await supabase
           .from("store_goals")
           .select("target_sales, champagne_target, visit_count_target")
           .eq("target_month", startDate)
           .maybeSingle();
+
         if (goalError) {
-          setErrorMessage(goalError.message); setLoading(false); return;
+          setErrorMessage(goalError.message);
+          setLoading(false);
+          return;
         }
+
         setStoreGoal(goalData ?? null);
+
+      } else if (p.role === "team_manager" && p.team_id) {
+        const { data: goalData, error: goalError } = await supabase
+          .from("team_goals")
+          .select("target_sales, champagne_target, visit_count_target")
+          .eq("team_id", p.team_id)
+          .eq("target_month", startDate)
+          .maybeSingle();
+
+        if (goalError) {
+          setErrorMessage(goalError.message);
+          setLoading(false);
+          return;
+        }
+
+        setStoreGoal(goalData ?? null);
+
       } else {
         setStoreGoal(null);
       }
 
-      setLoading(false);
+            setLoading(false);
     }
 
     load();
@@ -288,6 +309,50 @@ export default function HomePage() {
         </> : (
           <section className="mb-4 rounded-3xl border border-zinc-800 bg-zinc-950 p-5">
             <p className="text-xs text-zinc-500">MONTHLY RESULT</p><h2 className="mt-2 text-xl font-bold">{scopeLabel(profile?.role)}</h2>
+            <div className="mb-4 rounded-2xl border border-zinc-800 bg-black p-4">
+              <p className="text-xs text-zinc-500">自チーム売上目標</p>
+
+              <div className="mt-2 flex items-end justify-between">
+                <span className="text-2xl font-bold">
+                  {yen(salesTarget)}
+                </span>
+
+                <span className="text-sm text-zinc-400">
+                  達成率{" "}
+                  {salesTarget > 0
+                    ? Math.round((totals.sales / salesTarget) * 100)
+                    : 0}
+                  %
+                </span>
+              </div>
+
+              <div className="mt-3 h-2 overflow-hidden rounded-full bg-zinc-800">
+                <div
+                  className="h-full rounded-full bg-white"
+                  style={{
+                    width: `${
+                      salesTarget > 0
+                        ? Math.min(
+                            100,
+                            Math.round((totals.sales / salesTarget) * 100)
+                          )
+                        : 0
+                    }%`,
+                  }}
+                />
+              </div>
+
+              <div className="mt-3 flex justify-between text-sm">
+                <span className="text-zinc-400">
+                  現在 {yen(totals.sales)}
+                </span>
+
+                <span className="font-bold">
+                  あと {yen(Math.max(0, salesTarget - totals.sales))}
+                </span>
+              </div>
+            </div>
+
             <div className="mt-4 grid grid-cols-2 gap-3"><StoreResultBox label="売上" value={yen(totals.sales)} /><StoreResultBox label="オリシャン" value={`${totals.champagne}本`} /><StoreResultBox label="来店" value={`${totals.visits}組`} /><StoreResultBox label="既存来店" value={`${totals.existingVisits}組`} /></div>
           </section>
         )}
