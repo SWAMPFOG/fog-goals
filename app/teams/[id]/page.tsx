@@ -801,7 +801,7 @@ export default function TeamDetailPage() {
               </div>
               <div className="mt-2 flex justify-between">
                 <span className="text-sm text-zinc-500">
-                  {unallocatedSales > 0 ? "未配分" : "達成状況"}
+                  "配分状況"
                 </span>
                 <span className={unallocatedSales <= 0 ? "font-bold text-white" : ""}>
   {unallocatedSales > 0
@@ -825,7 +825,7 @@ export default function TeamDetailPage() {
               </div>
               <div className="mt-2 flex justify-between">
                 <span className="text-sm text-zinc-500">
-                  {unallocatedChampagne > 0 ? "未配分" : "達成状況"}
+                  "配分状況"
                 </span>
                 <span className={unallocatedChampagne <= 0 ? "font-bold text-white" : ""}>
   {unallocatedChampagne > 0
@@ -849,7 +849,7 @@ export default function TeamDetailPage() {
               </div>
               <div className="mt-2 flex justify-between">
                 <span className="text-sm text-zinc-500">
-                  {unallocatedVisits > 0 ? "未配分" : "達成状況"}
+                  "配分状況"
                 </span>
                 <span className={unallocatedVisits <= 0 ? "font-bold text-white" : ""}>
   {unallocatedVisits > 0
