@@ -286,6 +286,94 @@ export default function DailyPage() {
     );
   }
 
+
+  async function resetCurrentDay() {
+    if (!canEdit) return;
+
+    const ok = window.confirm(
+      `${businessDate} の日報データを削除します。\n本当に削除しますか？`
+    );
+    if (!ok) return;
+
+    setSaving(true);
+    setMessage("");
+
+    const ids = members.map((m) => m.id);
+
+    const { error } = await supabase
+      .from("daily_results")
+      .delete()
+      .eq("business_date", businessDate)
+      .in("member_id", ids);
+
+    if (error) {
+      setMessage("ERROR: " + error.message);
+      setSaving(false);
+      return;
+    }
+
+    const next: Record<string, DailyInput> = {};
+    members.forEach((member) => {
+      next[member.id] = emptyRow(member);
+    });
+
+    setRows(next);
+    setExistingIds(new Set());
+    setMessage(`${businessDate} のデータを削除しました`);
+    setSaving(false);
+  }
+
+  async function resetCurrentMonth() {
+    if (!canEdit) return;
+
+    const yearMonth = businessDate.slice(0, 7);
+    const startDate = `${yearMonth}-01`;
+
+    const [year, month] = yearMonth.split("-").map(Number);
+    const next = new Date(year, month, 1);
+
+    const nextMonth =
+      `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}-01`;
+
+    const ok = window.confirm(
+      `${yearMonth} の表示対象メンバーの実績を全削除します。\n本当に削除しますか？`
+    );
+    if (!ok) return;
+
+    const finalOk = window.confirm(
+      "最終確認です。\nこの操作は元に戻せません。削除しますか？"
+    );
+    if (!finalOk) return;
+
+    setSaving(true);
+    setMessage("");
+
+    const ids = members.map((m) => m.id);
+
+    const { error } = await supabase
+      .from("daily_results")
+      .delete()
+      .gte("business_date", startDate)
+      .lt("business_date", nextMonth)
+      .in("member_id", ids);
+
+    if (error) {
+      setMessage("ERROR: " + error.message);
+      setSaving(false);
+      return;
+    }
+
+    const nextRows: Record<string, DailyInput> = {};
+    members.forEach((member) => {
+      nextRows[member.id] = emptyRow(member);
+    });
+
+    setRows(nextRows);
+    setExistingIds(new Set());
+    setMessage(`${yearMonth} の実績をリセットしました`);
+    setSaving(false);
+  }
+
   async function saveAll() {
     if (!canEdit) return;
 
@@ -666,17 +754,45 @@ export default function DailyPage() {
         </div>
 
         {canEdit && (
-          <div className="sticky bottom-16 z-40 mt-6 bg-black/95 py-3">
-            <button
-              onClick={saveAll}
-              disabled={saving}
-              className="w-full rounded-2xl bg-white py-4 font-bold text-black shadow-lg disabled:opacity-50"
-            >
-              {saving
-                ? "保存中..."
-                : "入力した日報を一括保存"}
-            </button>
-          </div>
+          <>
+            <details className="mt-6 rounded-2xl border border-red-950 bg-red-950/10 p-4">
+              <summary className="cursor-pointer text-sm font-bold text-red-400">
+                データ管理
+              </summary>
+
+              <div className="mt-4 space-y-3">
+                <button
+                  type="button"
+                  onClick={resetCurrentDay}
+                  disabled={saving}
+                  className="w-full rounded-xl border border-red-900 py-3 text-sm font-bold text-red-400 disabled:opacity-40"
+                >
+                  この日のデータを削除
+                </button>
+
+                <button
+                  type="button"
+                  onClick={resetCurrentMonth}
+                  disabled={saving}
+                  className="w-full rounded-xl bg-red-950 py-3 text-sm font-bold text-red-300 disabled:opacity-40"
+                >
+                  今月の対象データを全リセット
+                </button>
+              </div>
+            </details>
+
+            <div className="sticky bottom-16 z-40 mt-6 bg-black/95 py-3">
+              <button
+                onClick={saveAll}
+                disabled={saving}
+                className="w-full rounded-2xl bg-white py-4 font-bold text-black shadow-lg disabled:opacity-50"
+              >
+                {saving
+                  ? "保存中..."
+                  : "入力した日報を一括保存"}
+              </button>
+            </div>
+          </>
         )}
 
         {message && (
