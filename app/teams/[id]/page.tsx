@@ -589,7 +589,9 @@ export default function TeamDetailPage() {
               <p className="text-xs text-zinc-500">
                 チーム売上目標
               </p>
-              <p className="mt-2 text-3xl font-bold">
+              <p
+              className={`mt-2 text-3xl font-bold ${salesRate >= 100 ? "text-green-400" : "text-red-400"}`}
+            >
                 {goal ? yen(salesTarget) : "未設定"}
               </p>
             </div>
@@ -668,7 +670,9 @@ export default function TeamDetailPage() {
             <p className="text-xs text-zinc-500">
               オリシャン目標
             </p>
-            <p className="mt-2 text-2xl font-bold">
+            <p
+              className={`mt-2 text-2xl font-bold ${champagneRate >= 100 ? "text-green-400" : "text-red-400"}`}
+            >
               {goal ? `${champagneGoal}本` : "未設定"}
             </p>
             <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-zinc-800">
@@ -692,7 +696,9 @@ export default function TeamDetailPage() {
             <p className="text-xs text-zinc-500">
               来店組数目標
             </p>
-            <p className="mt-2 text-2xl font-bold">
+            <p
+              className={`mt-2 text-2xl font-bold ${visitRate >= 100 ? "text-green-400" : "text-red-400"}`}
+            >
               {goal ? `${visitGoal}組` : "未設定"}
             </p>
             <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-zinc-800">
@@ -991,12 +997,15 @@ export default function TeamDetailPage() {
                         売上
                       </span>
 
-                      <span>
-                        {yen(memberResult.sales)}
-                        {" / "}
-                        {memberSalesTarget > 0
-                          ? yen(memberSalesTarget)
-                          : "未設定"}
+                      <span className="flex items-baseline gap-2">
+                        <span className="text-2xl font-bold text-white">
+                          {yen(memberResult.sales)}
+                        </span>
+                        <span className="text-sm text-zinc-500">
+                          / {memberSalesTarget > 0
+                            ? yen(memberSalesTarget)
+                            : "未設定"}
+                        </span>
                       </span>
                     </div>
 
