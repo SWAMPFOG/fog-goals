@@ -807,8 +807,8 @@ export default function TeamDetailPage() {
   {unallocatedSales > 0
     ? yen(unallocatedSales)
     : unallocatedSales === 0
-      ? "✓ 目標達成"
-      : `✓ 目標達成 +${yen(Math.abs(unallocatedSales))}`}
+      ? "✓ 配分完了"
+      : `超過配分 ${yen(Math.abs(unallocatedSales))}`}
 </span>
               </div>
             </div>
@@ -831,8 +831,8 @@ export default function TeamDetailPage() {
   {unallocatedChampagne > 0
     ? `${unallocatedChampagne}本`
     : unallocatedChampagne === 0
-      ? "✓ 目標達成"
-      : `✓ 目標達成 +${Math.abs(unallocatedChampagne)}本`}
+      ? "✓ 配分完了"
+      : `超過配分 ${Math.abs(unallocatedChampagne)}本`}
 </span>
               </div>
             </div>
@@ -855,8 +855,8 @@ export default function TeamDetailPage() {
   {unallocatedVisits > 0
     ? `${unallocatedVisits}組`
     : unallocatedVisits === 0
-      ? "✓ 目標達成"
-      : `✓ 目標達成 +${Math.abs(unallocatedVisits)}組`}
+      ? "✓ 配分完了"
+      : `超過配分 ${Math.abs(unallocatedVisits)}組`}
 </span>
               </div>
             </div>
