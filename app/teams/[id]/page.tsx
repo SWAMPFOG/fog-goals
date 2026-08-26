@@ -659,8 +659,12 @@ export default function TeamDetailPage() {
 
           <div className="mt-5 rounded-2xl border border-zinc-800 bg-black p-4">
             <p className="text-xs text-zinc-500">目標まであと</p>
-            <p className="mt-1 text-3xl font-bold text-red-400">
-              {yen(salesRemaining)}
+            <p
+              className={`mt-1 text-3xl font-bold ${
+                salesRate >= 100 ? "text-green-400" : "text-red-400"
+              }`}
+            >
+              {salesRate >= 100 ? "達成" : yen(salesRemaining)}
             </p>
           </div>
         </section>
@@ -998,7 +1002,13 @@ export default function TeamDetailPage() {
                       </span>
 
                       <span className="flex items-baseline gap-2">
-                        <span className="text-2xl font-bold text-red-400">
+                        <span
+                          className={`text-2xl font-bold ${
+                            memberSalesRate >= 100
+                              ? "text-green-400"
+                              : "text-red-400"
+                          }`}
+                        >
                           {yen(memberResult.sales)}
                         </span>
                         <span className="text-sm text-zinc-500">
