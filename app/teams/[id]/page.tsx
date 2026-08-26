@@ -590,7 +590,7 @@ export default function TeamDetailPage() {
                 チーム売上目標
               </p>
               <p
-              className={`mt-2 text-3xl font-bold ${salesRate >= 100 ? "text-green-400" : "text-red-400"}`}
+              className="mt-2 text-3xl font-bold text-white"
             >
                 {goal ? yen(salesTarget) : "未設定"}
               </p>
@@ -620,7 +620,12 @@ export default function TeamDetailPage() {
           </div>
 
           <div className="mt-4 flex justify-between text-sm text-zinc-400">
-            <span>現在 {yen(totals.sales)}</span>
+            <span>
+                現在{" "}
+                <span className={salesRate >= 100 ? "font-bold text-green-400" : "font-bold text-red-400"}>
+                  {yen(totals.sales)}
+                </span>
+              </span>
             <span>
               達成率 {salesRate}%
             </span>
@@ -675,7 +680,7 @@ export default function TeamDetailPage() {
               オリシャン目標
             </p>
             <p
-              className={`mt-2 text-2xl font-bold ${champagneRate >= 100 ? "text-green-400" : "text-red-400"}`}
+              className="mt-2 text-2xl font-bold text-white"
             >
               {goal ? `${champagneGoal}本` : "未設定"}
             </p>
@@ -686,7 +691,10 @@ export default function TeamDetailPage() {
               />
             </div>
             <p className="mt-3 text-xs text-zinc-500">
-              現在 {totals.champagne}本
+              現在{" "}
+              <span className={champagneRate >= 100 ? "font-bold text-green-400" : "font-bold text-red-400"}>
+                {totals.champagne}本
+              </span>
             </p>
             <p className="mt-1 text-xs text-zinc-500">
               達成率 {champagneRate}%
@@ -701,7 +709,7 @@ export default function TeamDetailPage() {
               来店組数目標
             </p>
             <p
-              className={`mt-2 text-2xl font-bold ${visitRate >= 100 ? "text-green-400" : "text-red-400"}`}
+              className="mt-2 text-2xl font-bold text-white"
             >
               {goal ? `${visitGoal}組` : "未設定"}
             </p>
@@ -712,7 +720,10 @@ export default function TeamDetailPage() {
               />
             </div>
             <p className="mt-3 text-xs text-zinc-500">
-              現在 {totals.visits}組
+              現在{" "}
+              <span className={visitRate >= 100 ? "font-bold text-green-400" : "font-bold text-red-400"}>
+                {totals.visits}組
+              </span>
             </p>
             <p className="mt-1 text-xs text-zinc-500">
               達成率 {visitRate}%
