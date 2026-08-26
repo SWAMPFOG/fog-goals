@@ -530,7 +530,7 @@ export default function TeamDetailPage() {
     getValue: (m: (typeof memberStats)[number]) => number;
     format: (v: number) => string;
   }[] = [
-    { key: "sales", label: "売上", getValue: (m) => m.sales, format: (v) => yen(v) },
+    { key: "sales", label: "売上", getValue: (m) => m.sales, format: () => "" },
     { key: "champagne", label: "オリシャン", getValue: (m) => m.champagne, format: (v) => `${v}本` },
     { key: "visits", label: "来店", getValue: (m) => m.visits, format: (v) => `${v}組` },
     { key: "sends", label: "送り", getValue: (m) => m.sends, format: (v) => `${v}件` },
