@@ -55,7 +55,11 @@ export async function POST(req: NextRequest) {
 
     if (profileError || !profile) {
       return NextResponse.json(
-        { error: "権限情報を取得できません" },
+        {
+          error: profileError
+            ? `権限情報取得エラー: ${profileError.message}`
+            : "プロフィールが見つかりません"
+        },
         { status: 403 }
       );
     }
