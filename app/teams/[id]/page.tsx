@@ -65,15 +65,13 @@ const [results, setResults] = useState<DailyResult[]>([]);
 const [goal, setGoal] = useState<TeamGoal | null>(null);
 
 const [memberGoals, setMemberGoals] = useState<
-{
-member_id: string;
-target_sales: number | null;
-champagne_target: number | null;
-visit_count_target: number | null;
-}[]
-
-([]);
-
+  {
+    member_id: string;
+    target_sales: number | null;
+    champagne_target: number | null;
+    visit_count_target: number | null;
+  }[]
+>([]);
 const [month, setMonth] = useState(currentMonth());
 const [targetSales, setTargetSales] = useState("");
 const [champagneTarget, setChampagneTarget] = useState("");
