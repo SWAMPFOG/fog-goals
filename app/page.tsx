@@ -84,6 +84,9 @@ export default function HomePage() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [results, setResults] = useState<DailyResult[]>([]);
   const [storeGoal, setStoreGoal] = useState<StoreGoal | null>(null);
+  const [castMemberGoal, setCastMemberGoal] = useState<StoreGoal | null>(null);
+  const [castTeamGoal, setCastTeamGoal] = useState<StoreGoal | null>(null);
+  const [castTeamSales, setCastTeamSales] = useState(0);
   const month = useMemo(() => currentMonth(), []);
 
   useEffect(() => {
@@ -187,6 +190,64 @@ export default function HomePage() {
         setResults(data ?? []);
       }
 
+      // キャストは自分の目標 + 所属チームの目標/実績を取得
+      if (p.role === "cast" && p.member_id && p.team_id) {
+        const [memberGoalResult, teamGoalResult, teamDailyResult] =
+          await Promise.all([
+            supabase
+              .from("monthly_goals")
+              .select("target_sales, champagne_target, visit_count_target")
+              .eq("member_id", p.member_id)
+              .eq("target_month", startDate)
+              .maybeSingle(),
+
+            supabase
+              .from("team_goals")
+              .select("target_sales, champagne_target, visit_count_target")
+              .eq("team_id", p.team_id)
+              .eq("target_month", startDate)
+              .maybeSingle(),
+
+            supabase
+              .from("daily_results")
+              .select("sales")
+              .eq("team_id", p.team_id)
+              .gte("business_date", startDate)
+              .lt("business_date", nextMonth),
+          ]);
+
+        if (memberGoalResult.error) {
+          setErrorMessage(memberGoalResult.error.message);
+          setLoading(false);
+          return;
+        }
+
+        if (teamGoalResult.error) {
+          setErrorMessage(teamGoalResult.error.message);
+          setLoading(false);
+          return;
+        }
+
+        if (teamDailyResult.error) {
+          setErrorMessage(teamDailyResult.error.message);
+          setLoading(false);
+          return;
+        }
+
+        setCastMemberGoal(memberGoalResult.data ?? null);
+        setCastTeamGoal(teamGoalResult.data ?? null);
+        setCastTeamSales(
+          (teamDailyResult.data ?? []).reduce(
+            (sum, row) => sum + Number(row.sales ?? 0),
+            0
+          )
+        );
+      } else {
+        setCastMemberGoal(null);
+        setCastTeamGoal(null);
+        setCastTeamSales(0);
+      }
+
       // 業責以上は店舗目標、部責は自チーム目標を取得
       if (["business_manager", "company_manager", "chairman"].includes(p.role)) {
         const { data: goalData, error: goalError } = await supabase
@@ -248,6 +309,17 @@ export default function HomePage() {
   const salesTarget = storeGoal?.target_sales ?? 0;
   const champagneTarget = storeGoal?.champagne_target ?? 0;
   const visitTarget = storeGoal?.visit_count_target ?? 0;
+
+  const castMemberTarget = castMemberGoal?.target_sales ?? 0;
+  const castTeamTarget = castTeamGoal?.target_sales ?? 0;
+
+  const castMemberRate = rate(totals.sales, castMemberTarget);
+  const castTeamRate = rate(castTeamSales, castTeamTarget);
+
+  const castContribution =
+    castTeamTarget > 0
+      ? Math.round((totals.sales / castTeamTarget) * 1000) / 10
+      : 0;
   const salesRemaining = Math.max(0, salesTarget - totals.sales);
   const champagneRemaining = Math.max(0, champagneTarget - totals.champagne);
   const visitRemaining = Math.max(0, visitTarget - totals.visits);
@@ -300,7 +372,118 @@ export default function HomePage() {
 
         {errorMessage && <section className="mb-4 rounded-3xl border border-red-900 p-4"><p className="text-sm text-red-400">ERROR: {errorMessage}</p></section>}
 
-        {storeView && !storeGoal && <Link href="/settings" className="mb-4 block rounded-3xl border border-zinc-800 bg-zinc-950 p-5"><p className="text-xs text-zinc-500">STORE GOAL</p><p className="mt-2 font-bold">店舗目標が未設定です</p><p className="mt-2 text-sm text-zinc-500">タップして店舗目標を設定</p></Link>}
+        {profile?.role === "cast" && (
+        <section className="mb-4 rounded-3xl border border-zinc-800 bg-zinc-950 p-5">
+          <p className="text-xs text-zinc-500">MY PERFORMANCE</p>
+          <h2 className="mt-2 text-2xl font-bold">自分の目標</h2>
+
+          <div className="mt-5 rounded-2xl border border-zinc-800 bg-black p-4">
+            <p className="text-xs text-zinc-500">個人売上目標</p>
+
+            <p className="mt-2 text-2xl font-bold text-white">
+              {castMemberTarget > 0 ? yen(castMemberTarget) : "未設定"}
+            </p>
+
+            <div className="mt-4 flex items-end justify-between">
+              <div>
+                <p className="text-xs text-zinc-500">現在売上</p>
+                <p
+                  className={`mt-1 text-3xl font-bold ${
+                    castMemberTarget <= 0
+                      ? "text-white"
+                      : castMemberRate >= 100
+                        ? "text-green-400"
+                        : "text-red-400"
+                  }`}
+                >
+                  {yen(totals.sales)}
+                </p>
+              </div>
+
+              <p className="text-sm text-zinc-400">
+                達成率 {castMemberRate}%
+              </p>
+            </div>
+
+            <div className="mt-3 h-2 overflow-hidden rounded-full bg-zinc-800">
+              <div
+                className="h-full rounded-full bg-white"
+                style={{ width: `${castMemberRate}%` }}
+              />
+            </div>
+
+            <div className="mt-4 flex items-center justify-between">
+              <span className="text-sm text-zinc-500">目標まであと</span>
+
+              {castMemberTarget > 0 ? (
+                <span
+                  className={`text-xl font-bold ${
+                    castMemberRate >= 100
+                      ? "text-green-400"
+                      : "text-red-400"
+                  }`}
+                >
+                  {castMemberRate >= 100
+                    ? "達成"
+                    : yen(Math.max(0, castMemberTarget - totals.sales))}
+                </span>
+              ) : (
+                <span className="text-sm text-zinc-500">未設定</span>
+              )}
+            </div>
+          </div>
+
+          <div className="mt-4 rounded-2xl border border-zinc-800 bg-black p-4">
+            <p className="text-xs text-zinc-500">TEAM GOAL</p>
+            <h3 className="mt-1 text-lg font-bold">チーム進捗</h3>
+
+            <div className="mt-4 flex justify-between">
+              <span className="text-sm text-zinc-500">チーム目標</span>
+              <span className="font-bold text-white">
+                {castTeamTarget > 0 ? yen(castTeamTarget) : "未設定"}
+              </span>
+            </div>
+
+            <div className="mt-3 flex justify-between">
+              <span className="text-sm text-zinc-500">チーム現在売上</span>
+              <span
+                className={`font-bold ${
+                  castTeamTarget <= 0
+                    ? "text-white"
+                    : castTeamRate >= 100
+                      ? "text-green-400"
+                      : "text-red-400"
+                }`}
+              >
+                {yen(castTeamSales)}
+              </span>
+            </div>
+
+            <div className="mt-3 flex justify-between">
+              <span className="text-sm text-zinc-500">チーム達成率</span>
+              <span className="font-bold">{castTeamRate}%</span>
+            </div>
+
+            <div className="mt-3 h-2 overflow-hidden rounded-full bg-zinc-800">
+              <div
+                className="h-full rounded-full bg-white"
+                style={{ width: `${castTeamRate}%` }}
+              />
+            </div>
+
+            <div className="mt-4 flex items-center justify-between rounded-xl bg-zinc-900 p-3">
+              <span className="text-sm text-zinc-400">
+                自分のチーム貢献度
+              </span>
+              <span className="text-2xl font-bold text-white">
+                {castContribution}%
+              </span>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {storeView && !storeGoal && <Link href="/settings" className="mb-4 block rounded-3xl border border-zinc-800 bg-zinc-950 p-5"><p className="text-xs text-zinc-500">STORE GOAL</p><p className="mt-2 font-bold">店舗目標が未設定です</p><p className="mt-2 text-sm text-zinc-500">タップして店舗目標を設定</p></Link>}
 
         {storeView ? <>
           <GoalCard label="店舗月間売上目標" target={storeGoal ? yen(salesTarget) : "未設定"} current={`現在 ${yen(totals.sales)}`} rateValue={salesRate} remaining={yen(salesRemaining)} />
