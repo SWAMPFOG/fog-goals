@@ -235,6 +235,52 @@ export default function OrganizationPage() {
     window.location.reload();
   }
 
+  async function issueLogin(member: {
+    id: string;
+    name: string;
+    team_id: string | null;
+  }) {
+    const email = window.prompt(
+      `${member.name} のログイン用メールアドレスを入力`
+    );
+
+    if (!email?.trim()) return;
+
+    const { data } = await supabase.auth.getSession();
+    const token = data.session?.access_token;
+
+    if (!token) {
+      window.alert("ログイン情報を取得できません");
+      return;
+    }
+
+    const res = await fetch("/api/admin/create-cast-login", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        memberId: member.id,
+        email: email.trim(),
+      }),
+    });
+
+    const json = await res.json();
+
+    if (!res.ok) {
+      window.alert("発行エラー: " + (json.error ?? "不明なエラー"));
+      return;
+    }
+
+    window.alert(
+      `${member.name} のログインを発行しました\n\n` +
+      `メール: ${json.email}\n` +
+      `初期パスワード: ${json.password}\n\n` +
+      `この画面を閉じる前に控えてください。`
+    );
+  }
+
   async function editMember(member: {
     id: string;
     name: string;
@@ -575,6 +621,14 @@ export default function OrganizationPage() {
 
   <div className="flex shrink-0 gap-2">
     <button
+            type="button"
+            onClick={() => issueLogin(member)}
+            className="rounded-xl border border-green-800 px-4 py-2 text-sm font-bold text-green-400"
+          >
+            ログイン発行
+          </button>
+
+          <button
       type="button"
       onClick={() => editMember(member)}
       className="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-bold text-white"
