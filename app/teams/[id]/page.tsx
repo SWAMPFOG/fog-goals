@@ -33,21 +33,20 @@ repeat_plan_count: number | null;
 };
 
 type TeamGoal = {
-id: string;
-target_sales: number;
-champagne_target: number;
-visit_count_target: number;
+  id: string;
+  target_sales: number;
+  champagne_target: number;
+  visit_count_target: number;
 };
 
 function currentMonth() {
-const d = new Date();
-return ${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")};
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 
 function yen(value: number) {
-return ¥${value.toLocaleString("ja-JP")};
+  return `¥${value.toLocaleString("ja-JP")}`;
 }
-
 function rate(current: number, target: number) {
 if (target <= 0) return 0;
 return Math.min(100, Math.round((current / target) * 100));
