@@ -1030,7 +1030,33 @@ export default function TeamDetailPage() {
                       </span>
                     </div>
 
-                    <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-zinc-800">
+                    {/* 個人売上残り */}
+                {memberSalesTarget > 0 && (
+                  <div className="mt-2 flex items-center justify-between text-sm">
+                    <span className="text-zinc-500">
+                      目標まであと
+                    </span>
+
+                    <span
+                      className={`font-bold ${
+                        memberSalesRate >= 100
+                          ? "text-green-400"
+                          : "text-red-400"
+                      }`}
+                    >
+                      {memberSalesRate >= 100
+                        ? "達成"
+                        : yen(
+                            Math.max(
+                              0,
+                              memberSalesTarget - memberResult.sales
+                            )
+                          )}
+                    </span>
+                  </div>
+                )}
+
+                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-zinc-800">
                       <div
                         className="h-full bg-white"
                         style={{
