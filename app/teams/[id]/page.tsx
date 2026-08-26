@@ -560,6 +560,9 @@ export default function TeamDetailPage() {
     );
   }
 
+  // キャスト（member）は売上金額を非表示。部責以上は表示する。
+  const canViewSalesAmount = normalizedRole !== "member";
+
   // ランキングのタブ定義（表示順・ラベル・値の取り出し・整形をここで管理）
   const rankingTabs: {
     key: string;
@@ -567,7 +570,7 @@ export default function TeamDetailPage() {
     getValue: (m: (typeof memberStats)[number]) => number;
     format: (v: number) => string;
   }[] = [
-    { key: "sales", label: "売上", getValue: (m) => m.sales, format: () => "" },
+    { key: "sales", label: "売上", getValue: (m) => m.sales, format: (v) => canViewSalesAmount ? yen(v) : "" },
     { key: "champagne", label: "オリシャン", getValue: (m) => m.champagne, format: (v) => `${v}本` },
     { key: "visits", label: "来店", getValue: (m) => m.visits, format: (v) => `${v}組` },
     { key: "sends", label: "送り", getValue: (m) => m.sends, format: (v) => `${v}件` },
