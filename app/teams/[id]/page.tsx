@@ -61,6 +61,10 @@ export default function TeamDetailPage() {
   const [supabase] = useState(() => createClient());
 
   const [team, setTeam] = useState<Team | null>(null);
+  const [teamName, setTeamName] = useState("");
+  const [editingTeamName, setEditingTeamName] = useState(false);
+  const [savingTeamName, setSavingTeamName] = useState(false);
+  const [teamNameMessage, setTeamNameMessage] = useState("");
   const [members, setMembers] = useState<Member[]>([]);
   const [results, setResults] = useState<DailyResult[]>([]);
   const [goal, setGoal] = useState<TeamGoal | null>(null);
@@ -244,6 +248,7 @@ export default function TeamDetailPage() {
 
       setAccessDenied(false);
       setTeam(teamResult.data);
+      setTeamName(teamResult.data?.name ?? "");
       setMembers(membersResult.data ?? []);
       setResults(dailyResult.data ?? []);
 
@@ -402,6 +407,38 @@ export default function TeamDetailPage() {
     0,
     visitGoal - memberGoalTotals.visits
   );
+
+  async function saveTeamName() {
+    if (!canEditThisTeam) return;
+
+    const nextName = teamName.trim();
+    if (!nextName) {
+      setTeamNameMessage("チーム名を入力してください");
+      return;
+    }
+
+    setSavingTeamName(true);
+    setTeamNameMessage("");
+
+    const { data, error } = await supabase
+      .from("teams")
+      .update({ name: nextName })
+      .eq("id", teamId)
+      .select("id, name, department_id")
+      .single();
+
+    if (error) {
+      setTeamNameMessage(`ERROR: ${error.message}`);
+      setSavingTeamName(false);
+      return;
+    }
+
+    setTeam(data);
+    setTeamName(data.name);
+    setEditingTeamName(false);
+    setTeamNameMessage("チーム名を変更しました");
+    setSavingTeamName(false);
+  }
 
   async function saveGoal() {
     setMessage("");
@@ -569,9 +606,61 @@ export default function TeamDetailPage() {
             SWAMP-FOG
           </p>
 
-          <h1 className="mt-2 text-3xl font-bold">
-            {team?.name ?? "TEAM"}
-          </h1>
+          <div className="mt-2 flex items-center justify-between gap-3">
+            <h1 className="text-3xl font-bold">
+              {team?.name ?? "TEAM"}
+            </h1>
+
+            {canEditThisTeam && !editingTeamName && (
+              <button
+                onClick={() => {
+                  setTeamName(team?.name ?? "");
+                  setTeamNameMessage("");
+                  setEditingTeamName(true);
+                }}
+                className="shrink-0 rounded-xl border border-zinc-700 px-3 py-2 text-xs"
+              >
+                チーム名変更
+              </button>
+            )}
+          </div>
+
+          {editingTeamName && canEditThisTeam && (
+            <div className="mt-4 rounded-2xl border border-zinc-800 bg-zinc-950 p-4">
+              <input
+                value={teamName}
+                onChange={(e) => setTeamName(e.target.value)}
+                placeholder="チーム名"
+                className="w-full rounded-xl border border-zinc-800 bg-black px-4 py-3 text-white"
+              />
+
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => {
+                    setTeamName(team?.name ?? "");
+                    setTeamNameMessage("");
+                    setEditingTeamName(false);
+                  }}
+                  className="rounded-xl border border-zinc-700 py-3 text-sm"
+                >
+                  キャンセル
+                </button>
+                <button
+                  onClick={saveTeamName}
+                  disabled={savingTeamName}
+                  className="rounded-xl bg-white py-3 text-sm font-bold text-black disabled:opacity-50"
+                >
+                  {savingTeamName ? "保存中..." : "保存"}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {teamNameMessage && (
+            <p className={`mt-2 text-xs ${teamNameMessage.startsWith("ERROR") ? "text-red-400" : "text-green-400"}`}>
+              {teamNameMessage}
+            </p>
+          )}
 
           <p className="mt-1 text-sm text-zinc-500">
             TEAM GOAL
