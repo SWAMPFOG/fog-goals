@@ -194,12 +194,14 @@ export default function DailyPage() {
       setMessage("");
 
       const ids = members.map((m) => m.id);
+      const monthStart = `${businessDate.slice(0, 7)}-01`;
 
       const { data, error } = await supabase
         .from("daily_results")
         .select(`
           member_id,
           team_id,
+          business_date,
           sales,
           champagne_count,
           visit_count,
@@ -212,7 +214,8 @@ export default function DailyPage() {
           repeat_plan_count,
           note
         `)
-        .eq("business_date", businessDate)
+        .gte("business_date", monthStart)
+        .lte("business_date", businessDate)
         .in("member_id", ids);
 
       if (error) {
@@ -230,23 +233,63 @@ export default function DailyPage() {
       });
 
       loaded.forEach((item: any) => {
-        existing.add(item.member_id);
+        const id = item.member_id;
 
-        next[item.member_id] = {
-          member_id: item.member_id,
-          team_id: item.team_id,
-          sales: String(item.sales ?? 0),
-          champagne_count: String(item.champagne_count ?? 0),
-          visit_count: String(item.visit_count ?? 0),
-          existing_visit_count: String(item.existing_visit_count ?? 0),
-          repeat_count: String(item.repeat_count ?? 0),
-          first_contact_count: String(item.first_contact_count ?? 0),
-          send_count: String(item.send_count ?? 0),
-          inhouse_count: String(item.inhouse_count ?? 0),
-          contact_acquired_count: String(item.contact_acquired_count ?? 0),
-          repeat_plan_count: String(item.repeat_plan_count ?? 0),
-          note: item.note ?? "",
-        };
+        if (item.business_date === businessDate) {
+          existing.add(id);
+        }
+
+        const row = next[id] ?? emptyRow(
+          members.find((m) => m.id === id)!
+        );
+
+        row.team_id = item.team_id ?? row.team_id;
+
+        row.sales = String(
+          Number(row.sales || 0) + Number(item.sales ?? 0)
+        );
+        row.champagne_count = String(
+          Number(row.champagne_count || 0) +
+          Number(item.champagne_count ?? 0)
+        );
+        row.visit_count = String(
+          Number(row.visit_count || 0) +
+          Number(item.visit_count ?? 0)
+        );
+        row.existing_visit_count = String(
+          Number(row.existing_visit_count || 0) +
+          Number(item.existing_visit_count ?? 0)
+        );
+        row.repeat_count = String(
+          Number(row.repeat_count || 0) +
+          Number(item.repeat_count ?? 0)
+        );
+        row.first_contact_count = String(
+          Number(row.first_contact_count || 0) +
+          Number(item.first_contact_count ?? 0)
+        );
+        row.send_count = String(
+          Number(row.send_count || 0) +
+          Number(item.send_count ?? 0)
+        );
+        row.inhouse_count = String(
+          Number(row.inhouse_count || 0) +
+          Number(item.inhouse_count ?? 0)
+        );
+        row.contact_acquired_count = String(
+          Number(row.contact_acquired_count || 0) +
+          Number(item.contact_acquired_count ?? 0)
+        );
+        row.repeat_plan_count = String(
+          Number(row.repeat_plan_count || 0) +
+          Number(item.repeat_plan_count ?? 0)
+        );
+
+        if (item.business_date === businessDate) {
+          row.note = item.note ?? "";
+        }
+
+        next[id] = row;
       });
 
       setRows(next);
@@ -393,22 +436,93 @@ export default function DailyPage() {
     setSaving(true);
     setMessage("");
 
+    const monthStart = `${businessDate.slice(0, 7)}-01`;
+    const targetIds = targets.map((row) => row.member_id);
+
+    const { data: previousData, error: previousError } = await supabase
+      .from("daily_results")
+      .select(`
+        member_id,
+        sales,
+        champagne_count,
+        visit_count,
+        existing_visit_count,
+        repeat_count,
+        first_contact_count,
+        send_count,
+        inhouse_count,
+        contact_acquired_count,
+        repeat_plan_count
+      `)
+      .gte("business_date", monthStart)
+      .lt("business_date", businessDate)
+      .in("member_id", targetIds);
+
+    if (previousError) {
+      setMessage("ERROR: " + previousError.message);
+      setSaving(false);
+      return;
+    }
+
+    const previous: Record<string, {
+      sales: number;
+      champagne_count: number;
+      visit_count: number;
+      existing_visit_count: number;
+      repeat_count: number;
+      first_contact_count: number;
+      send_count: number;
+      inhouse_count: number;
+      contact_acquired_count: number;
+      repeat_plan_count: number;
+    }> = {};
+
+    for (const item of previousData ?? []) {
+      const id = item.member_id;
+
+      if (!previous[id]) {
+        previous[id] = {
+          sales: 0,
+          champagne_count: 0,
+          visit_count: 0,
+          existing_visit_count: 0,
+          repeat_count: 0,
+          first_contact_count: 0,
+          send_count: 0,
+          inhouse_count: 0,
+          contact_acquired_count: 0,
+          repeat_plan_count: 0,
+        };
+      }
+
+      previous[id].sales += Number(item.sales ?? 0);
+      previous[id].champagne_count += Number(item.champagne_count ?? 0);
+      previous[id].visit_count += Number(item.visit_count ?? 0);
+      previous[id].existing_visit_count += Number(item.existing_visit_count ?? 0);
+      previous[id].repeat_count += Number(item.repeat_count ?? 0);
+      previous[id].first_contact_count += Number(item.first_contact_count ?? 0);
+      previous[id].send_count += Number(item.send_count ?? 0);
+      previous[id].inhouse_count += Number(item.inhouse_count ?? 0);
+      previous[id].contact_acquired_count += Number(item.contact_acquired_count ?? 0);
+      previous[id].repeat_plan_count += Number(item.repeat_plan_count ?? 0);
+    }
+
     const payload = targets.map((row) => ({
       member_id: row.member_id,
       team_id: row.team_id,
       business_date: businessDate,
 
-      sales: Number(row.sales || 0),
-      champagne_count: Number(row.champagne_count || 0),
-      visit_count: Number(row.visit_count || 0),
-      existing_visit_count: Number(row.existing_visit_count || 0),
+      sales: Number(row.sales || 0) - (previous[row.member_id]?.sales ?? 0),
+      champagne_count: Number(row.champagne_count || 0) - (previous[row.member_id]?.champagne_count ?? 0),
+      visit_count: Number(row.visit_count || 0) - (previous[row.member_id]?.visit_count ?? 0),
+      existing_visit_count: Number(row.existing_visit_count || 0) - (previous[row.member_id]?.existing_visit_count ?? 0),
 
-      repeat_count: Number(row.repeat_count || 0),
-      first_contact_count: Number(row.first_contact_count || 0),
-      send_count: Number(row.send_count || 0),
-      inhouse_count: Number(row.inhouse_count || 0),
-      contact_acquired_count: Number(row.contact_acquired_count || 0),
-      repeat_plan_count: Number(row.repeat_plan_count || 0),
+      repeat_count: Number(row.repeat_count || 0) - (previous[row.member_id]?.repeat_count ?? 0),
+      first_contact_count: Number(row.first_contact_count || 0) - (previous[row.member_id]?.first_contact_count ?? 0),
+      send_count: Number(row.send_count || 0) - (previous[row.member_id]?.send_count ?? 0),
+      inhouse_count: Number(row.inhouse_count || 0) - (previous[row.member_id]?.inhouse_count ?? 0),
+      contact_acquired_count: Number(row.contact_acquired_count || 0) - (previous[row.member_id]?.contact_acquired_count ?? 0),
+      repeat_plan_count: Number(row.repeat_plan_count || 0) - (previous[row.member_id]?.repeat_plan_count ?? 0),
 
       note: row.note.trim() || null,
     }));
@@ -432,7 +546,7 @@ export default function DailyPage() {
       ])
     );
 
-    setMessage(`${targets.length}名分の日報を保存しました`);
+    setMessage(`${targets.length}名分の月間累計を保存しました`);
     setSaving(false);
 
     const returnTeamId =
@@ -497,7 +611,7 @@ export default function DailyPage() {
           SWAMP-FOG
         </p>
 
-        <h1 className="mt-2 text-3xl font-bold">日報</h1>
+        <h1 className="mt-2 text-3xl font-bold">月間累計入力</h1>
         <p className="mt-1 text-sm text-zinc-500">
           DAILY RESULT
         </p>
