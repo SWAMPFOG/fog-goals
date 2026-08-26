@@ -208,12 +208,10 @@ export default function HomePage() {
               .eq("target_month", startDate)
               .maybeSingle(),
 
-            supabase
-              .from("daily_results")
-              .select("sales")
-              .eq("team_id", p.team_id)
-              .gte("business_date", startDate)
-              .lt("business_date", nextMonth),
+          supabase.rpc("get_my_team_sales_total", {
+            p_start_date: startDate,
+            p_end_date: nextMonth,
+          }),
           ]);
 
         if (memberGoalResult.error) {
@@ -236,12 +234,7 @@ export default function HomePage() {
 
         setCastMemberGoal(memberGoalResult.data ?? null);
         setCastTeamGoal(teamGoalResult.data ?? null);
-        setCastTeamSales(
-          (teamDailyResult.data ?? []).reduce(
-            (sum, row) => sum + Number(row.sales ?? 0),
-            0
-          )
-        );
+      setCastTeamSales(Number(teamDailyResult.data ?? 0));
       } else {
         setCastMemberGoal(null);
         setCastTeamGoal(null);
