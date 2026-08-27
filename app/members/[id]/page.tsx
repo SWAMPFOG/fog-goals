@@ -354,9 +354,13 @@ export default function MemberDetailPage() {
   return (
     <main className="min-h-screen bg-black text-white pb-24">
       <div className="mx-auto w-full max-w-md px-5 pt-8">
-        <Link href="/members" className="text-sm text-zinc-500">
-          ← メンバー一覧
-        </Link>
+        {normalizedRole === "member" ? (
+          <p className="text-sm text-zinc-500">マイページ</p>
+        ) : (
+          <Link href="/members" className="text-sm text-zinc-500">
+            ← メンバー一覧
+          </Link>
+        )}
 
         {loading ? (
           <p className="mt-8 text-zinc-500">読み込み中...</p>
@@ -375,12 +379,21 @@ export default function MemberDetailPage() {
 
               <p className="mt-1 text-sm text-zinc-500">PERSONAL GOALS</p>
 
-          <Link
-            href={`/teams/${member.team_id}`}
-            className="mt-3 inline-block text-sm text-zinc-500"
-          >
-            ← 所属チームへ戻る
-          </Link>
+          {normalizedRole === "member" ? (
+            <Link
+              href={`/teams/${member.team_id}`}
+              className="mt-3 inline-block rounded-xl border border-zinc-800 px-3 py-2 text-sm text-zinc-300"
+            >
+              チームを見る →
+            </Link>
+          ) : (
+            <Link
+              href={`/teams/${member.team_id}`}
+              className="mt-3 inline-block text-sm text-zinc-500"
+            >
+              ← 所属チームへ戻る
+            </Link>
+          )}
             </header>
 
             <div className="mb-4 flex items-center justify-between">
@@ -602,24 +615,47 @@ export default function MemberDetailPage() {
       </div>
 
       <nav className="fixed bottom-0 left-0 right-0 border-t border-zinc-900 bg-black/95">
-        <div className="mx-auto grid max-w-md grid-cols-4">
-          <Link
-            href="/"
-            className="py-4 text-center text-xs text-zinc-600"
-          >
-            ホーム
-          </Link>
+        {normalizedRole === "member" && member ? (
+          <div className="mx-auto grid max-w-md grid-cols-2">
+            <Link
+              href={`/members/${member.id}`}
+              className="py-4 text-center text-xs font-bold text-white"
+            >
+              マイページ
+            </Link>
 
-          <Link
-            href="/members"
-            className="py-4 text-center text-xs font-bold text-white"
-          >
-            メンバー
-          </Link>
+            <Link
+              href={`/teams/${member.team_id}`}
+              className="py-4 text-center text-xs text-zinc-500"
+            >
+              チーム
+            </Link>
+          </div>
+        ) : (
+          <div className="mx-auto grid max-w-md grid-cols-4">
+            <Link
+              href="/"
+              className="py-4 text-center text-xs text-zinc-600"
+            >
+              ホーム
+            </Link>
 
-          <button className="py-4 text-xs text-zinc-600">日報</button>
-          <button className="py-4 text-xs text-zinc-600">設定</button>
-        </div>
+            <Link
+              href="/members"
+              className="py-4 text-center text-xs font-bold text-white"
+            >
+              メンバー
+            </Link>
+
+            <Link href="/daily" className="py-4 text-center text-xs text-zinc-600">
+              日報
+            </Link>
+
+            <Link href="/settings" className="py-4 text-center text-xs text-zinc-600">
+              設定
+            </Link>
+          </div>
+        )}
       </nav>
     </main>
   );
