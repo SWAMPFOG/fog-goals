@@ -355,7 +355,9 @@ export default function MemberDetailPage() {
     <main className="min-h-screen bg-black text-white pb-24">
       <div className="mx-auto w-full max-w-md px-5 pt-8">
         {normalizedRole === "member" ? (
-          <p className="text-sm text-zinc-500">マイページ</p>
+          <Link href="/" className="text-sm text-zinc-500">
+            ← ホーム
+          </Link>
         ) : (
           <Link href="/members" className="text-sm text-zinc-500">
             ← メンバー一覧
@@ -614,24 +616,8 @@ export default function MemberDetailPage() {
         ) : null}
       </div>
 
-      <nav className="fixed bottom-0 left-0 right-0 border-t border-zinc-900 bg-black/95">
-        {normalizedRole === "member" && member ? (
-          <div className="mx-auto grid max-w-md grid-cols-2">
-            <Link
-              href={`/members/${member.id}`}
-              className="py-4 text-center text-xs font-bold text-white"
-            >
-              マイページ
-            </Link>
-
-            <Link
-              href={`/teams/${member.team_id}`}
-              className="py-4 text-center text-xs text-zinc-500"
-            >
-              チーム
-            </Link>
-          </div>
-        ) : (
+      {normalizedRole !== "member" && (
+        <nav className="fixed bottom-0 left-0 right-0 border-t border-zinc-900 bg-black/95">
           <div className="mx-auto grid max-w-md grid-cols-4">
             <Link
               href="/"
@@ -655,8 +641,8 @@ export default function MemberDetailPage() {
               設定
             </Link>
           </div>
-        )}
-      </nav>
+        </nav>
+      )}
     </main>
   );
 }
