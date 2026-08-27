@@ -46,6 +46,21 @@ type TeamRankingRow = {
   repeat_rate: number;
 };
 
+type TeamSummary = {
+  team_id: string;
+  team_sales: number;
+  team_champagne: number;
+  team_visits: number;
+  team_existing_visits: number;
+  team_repeats: number;
+  team_first_contacts: number;
+  team_sends: number;
+  team_inhouse: number;
+  team_contacts: number;
+  team_repeat_plans: number;
+  my_sales: number;
+};
+
 type TeamGoal = {
   id: string;
   target_sales: number;
@@ -82,6 +97,7 @@ export default function TeamDetailPage() {
   const [members, setMembers] = useState<Member[]>([]);
   const [results, setResults] = useState<DailyResult[]>([]);
   const [rankingRows, setRankingRows] = useState<TeamRankingRow[]>([]);
+  const [teamSummary, setTeamSummary] = useState<TeamSummary | null>(null);
   const [goal, setGoal] = useState<TeamGoal | null>(null);
 
   const [memberGoals, setMemberGoals] = useState<
@@ -104,6 +120,7 @@ export default function TeamDetailPage() {
   const [message, setMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [role, setRole] = useState<string | null>(null);
+  const [profileMemberId, setProfileMemberId] = useState<string | null>(null);
   const [profileTeamId, setProfileTeamId] = useState<string | null>(null);
   const [profileDepartmentId, setProfileDepartmentId] = useState<string | null>(null);
   const [accessDenied, setAccessDenied] = useState(false);
@@ -127,7 +144,7 @@ export default function TeamDetailPage() {
 
       const { data: profileData, error: profileError } = await supabase
         .from("profiles")
-        .select("role, team_id")
+        .select("role, member_id, team_id")
         .eq("id", user.id)
         .maybeSingle();
 
@@ -138,6 +155,7 @@ export default function TeamDetailPage() {
       }
 
       setRole(profileData?.role ?? null);
+      setProfileMemberId(profileData?.member_id ?? null);
       setProfileTeamId(profileData?.team_id ?? null);
 
       let ownDepartmentId: string | null = null;
@@ -261,13 +279,16 @@ export default function TeamDetailPage() {
         return;
       }
 
-      // キャストはRLSで他メンバーのmembers/daily_resultsを直接取得できないため、
-      // SECURITY DEFINER RPCから安全なチームランキング集計だけ取得する。
+      // キャストはRLSで他メンバーの実績を直接取得できないため、
+      // SECURITY DEFINER RPCからチーム集計とランキングだけ安全に取得する。
       if (normalizedRole === "member") {
-        const { data: rankingData, error: rankingError } = await supabase.rpc(
-          "get_my_team_ranking",
-          { p_month: targetMonth }
-        );
+        const [
+          { data: rankingData, error: rankingError },
+          { data: summaryData, error: summaryError },
+        ] = await Promise.all([
+          supabase.rpc("get_my_team_ranking", { p_month: targetMonth }),
+          supabase.rpc("get_my_team_summary", { p_month: targetMonth }),
+        ]);
 
         if (rankingError) {
           setErrorMessage(rankingError.message);
@@ -275,9 +296,19 @@ export default function TeamDetailPage() {
           return;
         }
 
+        if (summaryError) {
+          setErrorMessage(summaryError.message);
+          setLoading(false);
+          return;
+        }
+
         setRankingRows((rankingData ?? []) as TeamRankingRow[]);
+        setTeamSummary(
+          ((summaryData ?? [])[0] ?? null) as TeamSummary | null
+        );
       } else {
         setRankingRows([]);
+        setTeamSummary(null);
       }
 
       setAccessDenied(false);
@@ -325,7 +356,7 @@ export default function TeamDetailPage() {
     if (teamId) load();
   }, [teamId, month, router, supabase]);
 
-  const totals = useMemo(() => {
+  const directTotals = useMemo(() => {
     return results.reduce(
       (sum, row) => ({
         sales: sum.sales + Number(row.sales ?? 0),
@@ -361,6 +392,22 @@ export default function TeamDetailPage() {
       }
     );
   }, [results]);
+
+  const totals =
+    normalizeRole(role) === "member" && teamSummary
+      ? {
+          sales: Number(teamSummary.team_sales ?? 0),
+          champagne: Number(teamSummary.team_champagne ?? 0),
+          visits: Number(teamSummary.team_visits ?? 0),
+          existingVisits: Number(teamSummary.team_existing_visits ?? 0),
+          repeats: Number(teamSummary.team_repeats ?? 0),
+          firstContacts: Number(teamSummary.team_first_contacts ?? 0),
+          sends: Number(teamSummary.team_sends ?? 0),
+          inhouse: Number(teamSummary.team_inhouse ?? 0),
+          contacts: Number(teamSummary.team_contacts ?? 0),
+          repeatPlans: Number(teamSummary.team_repeat_plans ?? 0),
+        }
+      : directTotals;
 
   // メンバーごとの月間集計（ランキング用）
   const memberStats = useMemo(() => {
@@ -416,6 +463,12 @@ export default function TeamDetailPage() {
   const visitGoal = goal?.visit_count_target ?? 0;
 
   const normalizedRole = normalizeRole(role);
+  const myTeamContributionRate =
+    normalizedRole === "member" && salesTarget > 0
+      ? Math.round(
+          (Number(teamSummary?.my_sales ?? 0) / salesTarget) * 1000
+        ) / 10
+      : 0;
 
   const canEditThisTeam =
     canEditTeamGoal(role) &&
@@ -654,12 +707,21 @@ export default function TeamDetailPage() {
   return (
     <main className="min-h-screen bg-black text-white pb-24">
       <div className="mx-auto w-full max-w-md px-5 pt-8">
-        <Link
-          href="/teams"
-          className="text-sm text-zinc-500"
-        >
-          ← チーム一覧
-        </Link>
+        {normalizedRole === "member" ? (
+          <Link
+            href={profileMemberId ? `/members/${profileMemberId}` : "/"}
+            className="text-sm text-zinc-500"
+          >
+            ← マイページ
+          </Link>
+        ) : (
+          <Link
+            href="/teams"
+            className="text-sm text-zinc-500"
+          >
+            ← チーム一覧
+          </Link>
+        )}
 
         <header className="mt-6 mb-6">
           <p className="text-xs tracking-[0.3em] text-zinc-500">
@@ -766,11 +828,11 @@ export default function TeamDetailPage() {
               >
                 {editing ? "閉じる" : "目標設定"}
               </button>
-            ) : (
+            ) : normalizedRole !== "member" ? (
               <span className="text-xs text-zinc-600">
                 閲覧のみ
               </span>
-            )}
+            ) : null}
           </div>
 
           <div className="mt-5 h-2 overflow-hidden rounded-full bg-zinc-800">
@@ -830,6 +892,25 @@ export default function TeamDetailPage() {
             </p>
           </div>
         </section>
+
+        {normalizedRole === "member" && (
+          <section className="mt-3 rounded-3xl border border-zinc-800 bg-zinc-950 p-5">
+            <p className="text-xs text-zinc-500">MY TEAM CONTRIBUTION</p>
+            <div className="mt-2 flex items-end justify-between gap-3">
+              <div>
+                <p className="text-sm text-zinc-400">自分のチーム貢献率</p>
+                <p className="mt-1 text-3xl font-bold">
+                  {salesTarget > 0 ? `${myTeamContributionRate}%` : "－"}
+                </p>
+              </div>
+              <p className="text-right text-xs text-zinc-500">
+                チーム売上目標に対する
+                <br />
+                自分の売上の割合
+              </p>
+            </div>
+          </section>
+        )}
 
         {editing && canEditThisTeam && (
           <section className="mt-4 rounded-3xl border border-zinc-700 bg-zinc-950 p-5">
@@ -958,6 +1039,8 @@ export default function TeamDetailPage() {
           </div>
         </section>
 
+        {normalizedRole !== "member" && (
+          <>
         <section className="mt-6 rounded-3xl border border-zinc-800 bg-zinc-950 p-5">
           <p className="text-xs text-zinc-500">
             GOAL ALLOCATION
@@ -1042,6 +1125,10 @@ export default function TeamDetailPage() {
           </div>
         </section>
 
+          </>
+        )}
+
+        {normalizedRole !== "member" && (
         <section className="mt-6">
           <p className="text-xs text-zinc-500">
             TEAM MEMBERS
@@ -1177,23 +1264,42 @@ export default function TeamDetailPage() {
             })}
           </div>
         </section>
+        )}
+
       </div>
 
       <nav className="fixed bottom-0 left-0 right-0 border-t border-zinc-900 bg-black/95">
-        <div className="mx-auto grid max-w-md grid-cols-4">
-          <Link href="/" className="py-4 text-center text-xs text-zinc-600">
-            ホーム
-          </Link>
-          <Link href="/teams" className="py-4 text-center text-xs font-bold text-white">
-            チーム
-          </Link>
-          <Link href="/daily" className="py-4 text-center text-xs text-zinc-600">
-            日報
-          </Link>
-          <Link href="/settings" className="py-4 text-center text-xs text-zinc-600">
-            設定
-          </Link>
-        </div>
+        {normalizedRole === "member" ? (
+          <div className="mx-auto grid max-w-md grid-cols-2">
+            <Link
+              href={profileMemberId ? `/members/${profileMemberId}` : "/"}
+              className="py-4 text-center text-xs text-zinc-500"
+            >
+              マイページ
+            </Link>
+            <Link
+              href={`/teams/${teamId}`}
+              className="py-4 text-center text-xs font-bold text-white"
+            >
+              チーム
+            </Link>
+          </div>
+        ) : (
+          <div className="mx-auto grid max-w-md grid-cols-4">
+            <Link href="/" className="py-4 text-center text-xs text-zinc-600">
+              ホーム
+            </Link>
+            <Link href="/teams" className="py-4 text-center text-xs font-bold text-white">
+              チーム
+            </Link>
+            <Link href="/daily" className="py-4 text-center text-xs text-zinc-600">
+              日報
+            </Link>
+            <Link href="/settings" className="py-4 text-center text-xs text-zinc-600">
+              設定
+            </Link>
+          </div>
+        )}
       </nav>
     </main>
   );
