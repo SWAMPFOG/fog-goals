@@ -1,3 +1,33 @@
+
+660
+661
+662
+663
+664
+665
+666
+667
+668
+669
+670
+671
+672
+673
+674
+675
+676
+677
+678
+679
+680
+681
+682
+683
+684
+685
+686
+687
+688
 689
 690
 691
@@ -33,31 +63,35 @@
 721
 722
 723
-724
-725
-726
-727
-728
-729
-730
-731
-732
-733
-734
-735
-736
-737
-738
-739
-740
-741
-742
-743
-744
-745
-746
 "use client";
+                      オリシャン目標本数
+                    </span>
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      value={champagneTarget}
+                      onChange={(e) => setChampagneTarget(e.target.value)}
+                      placeholder="10"
+                      className="mt-2 w-full rounded-2xl border border-zinc-800 bg-black px-4 py-3 text-white outline-none"
+                    />
+                  </label>
 
+                  <label className="block">
+                    <span className="text-xs text-zinc-500">
+                      来店組数目標
+                    </span>
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      value={visitCountTarget}
+                      onChange={(e) => setVisitCountTarget(e.target.value)}
+                      placeholder="30"
+                      className="mt-2 w-full rounded-2xl border border-zinc-800 bg-black px-4 py-3 text-white outline-none"
+                    />
+                  </label>
+                </div>
+
+                <button
                   onClick={saveGoal}
                   disabled={saving}
                   className="mt-6 w-full rounded-2xl bg-white py-4 font-bold text-black disabled:opacity-50"
@@ -75,27 +109,6 @@
           </>
         ) : null}
       </div>
-
-      <nav className="fixed bottom-0 left-0 right-0 border-t border-zinc-900 bg-black/95">
-        <div className="mx-auto grid max-w-md grid-cols-4">
-          <Link
-            href="/"
-            className="py-4 text-center text-xs text-zinc-600"
-          >
-            ホーム
-          </Link>
-
-          <Link
-            href="/members"
-            className="py-4 text-center text-xs font-bold text-white"
-          >
-            メンバー
-          </Link>
-
-          <button className="py-4 text-xs text-zinc-600">日報</button>
-          <button className="py-4 text-xs text-zinc-600">設定</button>
-        </div>
-      </nav>
     </main>
   );
 }
