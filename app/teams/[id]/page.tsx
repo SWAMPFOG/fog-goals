@@ -32,6 +32,20 @@ type DailyResult = {
   repeat_plan_count: number | null;
 };
 
+type TeamRankingRow = {
+  member_id: string;
+  member_name: string;
+  sales_rank: number;
+  sales_amount: number | null;
+  champagne: number;
+  visits: number;
+  sends: number;
+  inhouse: number;
+  repeats: number;
+  inhouse_rate: number;
+  repeat_rate: number;
+};
+
 type TeamGoal = {
   id: string;
   target_sales: number;
@@ -67,6 +81,7 @@ export default function TeamDetailPage() {
   const [teamNameMessage, setTeamNameMessage] = useState("");
   const [members, setMembers] = useState<Member[]>([]);
   const [results, setResults] = useState<DailyResult[]>([]);
+  const [rankingRows, setRankingRows] = useState<TeamRankingRow[]>([]);
   const [goal, setGoal] = useState<TeamGoal | null>(null);
 
   const [memberGoals, setMemberGoals] = useState<
@@ -246,6 +261,25 @@ export default function TeamDetailPage() {
         return;
       }
 
+      // キャストはRLSで他メンバーのmembers/daily_resultsを直接取得できないため、
+      // SECURITY DEFINER RPCから安全なチームランキング集計だけ取得する。
+      if (normalizedRole === "member") {
+        const { data: rankingData, error: rankingError } = await supabase.rpc(
+          "get_my_team_ranking",
+          { p_month: targetMonth }
+        );
+
+        if (rankingError) {
+          setErrorMessage(rankingError.message);
+          setLoading(false);
+          return;
+        }
+
+        setRankingRows((rankingData ?? []) as TeamRankingRow[]);
+      } else {
+        setRankingRows([]);
+      }
+
       setAccessDenied(false);
       setTeam(teamResult.data);
       setTeamName(teamResult.data?.name ?? "");
@@ -330,6 +364,22 @@ export default function TeamDetailPage() {
 
   // メンバーごとの月間集計（ランキング用）
   const memberStats = useMemo(() => {
+    if (normalizeRole(role) === "member") {
+      return rankingRows.map((row) => ({
+        id: row.member_id,
+        name: row.member_name,
+        salesRank: Number(row.sales_rank ?? 0),
+        sales: Number(row.sales_amount ?? 0),
+        champagne: Number(row.champagne ?? 0),
+        visits: Number(row.visits ?? 0),
+        sends: Number(row.sends ?? 0),
+        inhouse: Number(row.inhouse ?? 0),
+        repeats: Number(row.repeats ?? 0),
+        inhouseRate: Number(row.inhouse_rate ?? 0),
+        repeatRate: Number(row.repeat_rate ?? 0),
+      }));
+    }
+
     return members.map((member) => {
       const agg = results
         .filter((row) => row.member_id === member.id)
@@ -348,6 +398,7 @@ export default function TeamDetailPage() {
       return {
         id: member.id,
         name: member.name,
+        salesRank: 0,
         sales: agg.sales,
         champagne: agg.champagne,
         visits: agg.visits,
@@ -358,7 +409,7 @@ export default function TeamDetailPage() {
         repeatRate: agg.sends > 0 ? (agg.repeats / agg.sends) * 100 : 0,
       };
     });
-  }, [members, results]);
+  }, [members, results, rankingRows, role]);
 
   const salesTarget = goal?.target_sales ?? 0;
   const champagneGoal = goal?.champagne_target ?? 0;
@@ -583,9 +634,15 @@ export default function TeamDetailPage() {
   const activeTab =
     rankingTabs.find((tab) => tab.key === rankTab) ?? rankingTabs[0];
 
-  const rankedMembers = [...memberStats].sort(
-    (a, b) => activeTab.getValue(b) - activeTab.getValue(a)
-  );
+  const rankedMembers =
+    rankTab === "sales" && normalizedRole === "member"
+      ? [...memberStats].sort(
+          (a, b) => a.salesRank - b.salesRank || a.name.localeCompare(b.name, "ja")
+        )
+      : [...memberStats].sort((a, b) => {
+          const diff = activeTab.getValue(b) - activeTab.getValue(a);
+          return diff !== 0 ? diff : a.name.localeCompare(b.name, "ja");
+        });
 
   function rankLabel(index: number) {
     if (index === 0) return "🥇";
@@ -883,7 +940,9 @@ export default function TeamDetailPage() {
                 >
                   <div className="flex items-center gap-3">
                     <span className="w-8 text-center text-lg font-bold">
-                      {rankLabel(index)}
+                      {rankTab === "sales" && normalizedRole === "member"
+                        ? rankLabel(Math.max(0, member.salesRank - 1))
+                        : rankLabel(index)}
                     </span>
                     <span className="text-sm font-bold">
                       {member.name}
