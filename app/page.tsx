@@ -402,6 +402,18 @@ export default function HomePage() {
                   <p className="text-sm text-zinc-600">未設定</p>
                 </div>
               )}
+
+              <Link
+                href="/clients"
+                className="col-span-2 flex min-h-28 items-center justify-between rounded-3xl border border-zinc-800 bg-zinc-950 p-5"
+              >
+                <div>
+                  <p className="text-xs text-zinc-500">CLIENT SALES</p>
+                  <p className="mt-2 text-xl font-bold">クライアント</p>
+                  <p className="mt-2 text-sm text-zinc-500">今月のクライアント別売上</p>
+                </div>
+                <span className="text-xl text-zinc-500">→</span>
+              </Link>
             </div>
           </section>
         </div>
