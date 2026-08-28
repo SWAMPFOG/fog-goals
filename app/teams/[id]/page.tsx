@@ -709,10 +709,10 @@ export default function TeamDetailPage() {
       <div className="mx-auto w-full max-w-md px-5 pt-8">
         {normalizedRole === "member" ? (
           <Link
-            href={profileMemberId ? `/members/${profileMemberId}` : "/"}
+            href="/"
             className="text-sm text-zinc-500"
           >
-            ← マイページ
+            ← ホーム
           </Link>
         ) : (
           <Link
@@ -1268,23 +1268,8 @@ export default function TeamDetailPage() {
 
       </div>
 
-      <nav className="fixed bottom-0 left-0 right-0 border-t border-zinc-900 bg-black/95">
-        {normalizedRole === "member" ? (
-          <div className="mx-auto grid max-w-md grid-cols-2">
-            <Link
-              href={profileMemberId ? `/members/${profileMemberId}` : "/"}
-              className="py-4 text-center text-xs text-zinc-500"
-            >
-              マイページ
-            </Link>
-            <Link
-              href={`/teams/${teamId}`}
-              className="py-4 text-center text-xs font-bold text-white"
-            >
-              チーム
-            </Link>
-          </div>
-        ) : (
+      {normalizedRole !== "member" && (
+        <nav className="fixed bottom-0 left-0 right-0 border-t border-zinc-900 bg-black/95">
           <div className="mx-auto grid max-w-md grid-cols-4">
             <Link href="/" className="py-4 text-center text-xs text-zinc-600">
               ホーム
@@ -1299,8 +1284,8 @@ export default function TeamDetailPage() {
               設定
             </Link>
           </div>
-        )}
-      </nav>
+        </nav>
+      )}
     </main>
   );
 }
