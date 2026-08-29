@@ -56,11 +56,14 @@ export default function ClientsPage() {
   const [amount, setAmount] = useState("");
   const [visitDate, setVisitDate] = useState(today());
   const [memberId, setMemberId] = useState("");
-const [editingSaleId, setEditingSaleId] = useState<string | null>(null);
-const [editClientName, setEditClientName] = useState("");
-const [editAmount, setEditAmount] = useState("");
-const [editVisitDate, setEditVisitDate] = useState("");
-const [editMemberId, setEditMemberId] = useState("");
+  const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
+
+  const [editingSaleId, setEditingSaleId] = useState<string | null>(null);
+  const [editClientName, setEditClientName] = useState("");
+  const [editAmount, setEditAmount] = useState("");
+  const [editVisitDate, setEditVisitDate] = useState("");
+  const [editMemberId, setEditMemberId] = useState("");
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
@@ -97,11 +100,12 @@ const [editMemberId, setEditMemberId] = useState("");
 
     const [year, monthNumber] = month.split("-").map(Number);
     const next = new Date(year, monthNumber, 1);
+
     const startDate = `${month}-01`;
-    const nextMonth = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(
-      2,
-      "0"
-    )}-01`;
+
+    const nextMonth = `${next.getFullYear()}-${String(
+      next.getMonth() + 1
+    ).padStart(2, "0")}-01`;
 
     const { data: salesData, error: salesError } = await supabase
       .from("client_sales")
@@ -118,9 +122,9 @@ const [editMemberId, setEditMemberId] = useState("");
 
     setSales((salesData ?? []) as ClientSale[]);
 
-    const isCast = p.role === "cast" || p.role === "member";
+    const cast = p.role === "cast" || p.role === "member";
 
-    if (!isCast) {
+    if (!cast) {
       const { data: memberData, error: memberError } = await supabase
         .from("members")
         .select("id, name, team_id")
@@ -134,6 +138,7 @@ const [editMemberId, setEditMemberId] = useState("");
       }
 
       const visibleMembers = (memberData ?? []) as Member[];
+
       setMembers(visibleMembers);
 
       if (!memberId && visibleMembers.length > 0) {
@@ -141,6 +146,7 @@ const [editMemberId, setEditMemberId] = useState("");
       }
     } else {
       setMembers([]);
+      setSelectedMemberId(p.member_id ?? null);
     }
 
     setLoading(false);
@@ -151,7 +157,20 @@ const [editMemberId, setEditMemberId] = useState("");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [month]);
 
-  const isCast = profile?.role === "cast" || profile?.role === "member";
+  const isCast =
+    profile?.role === "cast" || profile?.role === "member";
+
+  const activeMemberId = isCast
+    ? profile?.member_id ?? null
+    : selectedMemberId;
+
+  const visibleSales = useMemo(() => {
+    if (!activeMemberId) return [];
+
+    return sales.filter(
+      (row) => row.member_id === activeMemberId
+    );
+  }, [sales, activeMemberId]);
 
   const groupedClients = useMemo(() => {
     const map = new Map<
@@ -164,7 +183,7 @@ const [editMemberId, setEditMemberId] = useState("");
       }
     >();
 
-    for (const row of sales) {
+    for (const row of visibleSales) {
       const key = row.client_name.trim();
       const current = map.get(key);
 
@@ -178,16 +197,58 @@ const [editMemberId, setEditMemberId] = useState("");
       } else {
         current.total += Number(row.amount ?? 0);
         current.visits += 1;
-        if (row.visit_date > current.latest) current.latest = row.visit_date;
+
+        if (row.visit_date > current.latest) {
+          current.latest = row.visit_date;
+        }
       }
     }
 
-    return Array.from(map.values()).sort((a, b) => b.total - a.total);
-  }, [sales]);
+    return Array.from(map.values()).sort(
+      (a, b) => b.total - a.total
+    );
+  }, [visibleSales]);
 
-  const totalSales = groupedClients.reduce((sum, row) => sum + row.total, 0);
+  const totalSales = groupedClients.reduce(
+    (sum, row) => sum + row.total,
+    0
+  );
+
   const clientCount = groupedClients.length;
-  const average = clientCount > 0 ? Math.round(totalSales / clientCount) : 0;
+
+  const average =
+    clientCount > 0
+      ? Math.round(totalSales / clientCount)
+      : 0;
+
+  const selectedMemberName = isCast
+    ? "自分"
+    : members.find(
+        (member) => member.id === selectedMemberId
+      )?.name ?? null;
+
+  const memberSummaries = useMemo(() => {
+    return members.map((member) => {
+      const rows = sales.filter(
+        (row) => row.member_id === member.id
+      );
+
+      const total = rows.reduce(
+        (sum, row) => sum + Number(row.amount ?? 0),
+        0
+      );
+
+      const clients = new Set(
+        rows.map((row) => row.client_name.trim())
+      ).size;
+
+      return {
+        ...member,
+        total,
+        clients,
+      };
+    });
+  }, [members, sales]);
 
   async function addSale() {
     if (!profile || isCast) return;
@@ -195,43 +256,34 @@ const [editMemberId, setEditMemberId] = useState("");
     const name = clientName.trim();
     const numericAmount = Number(amount || 0);
 
-    if (!name) {
-      setErrorMessage("クライアント名を入力してください");
+    if (!name || !memberId || !visitDate) {
+      setErrorMessage("入力内容を確認してください");
       return;
     }
 
-    if (!memberId) {
-      setErrorMessage("担当キャストを選択してください");
-      return;
-    }
+    const targetMember = members.find(
+      (m) => m.id === memberId
+    );
 
-    if (!visitDate) {
-      setErrorMessage("来店日を入力してください");
-      return;
-    }
-
-    if (numericAmount < 0) {
-      setErrorMessage("売上金額を確認してください");
-      return;
-    }
-
-    const targetMember = members.find((m) => m.id === memberId);
     if (!targetMember?.team_id) {
-      setErrorMessage("担当キャストのチームが見つかりません");
+      setErrorMessage(
+        "担当キャストのチームが見つかりません"
+      );
       return;
     }
 
     setSaving(true);
     setErrorMessage("");
-    setMessage("");
 
-    const { error } = await supabase.from("client_sales").insert({
-      member_id: memberId,
-      team_id: targetMember.team_id,
-      client_name: name,
-      amount: numericAmount,
-      visit_date: visitDate,
-    });
+    const { error } = await supabase
+      .from("client_sales")
+      .insert({
+        member_id: memberId,
+        team_id: targetMember.team_id,
+        client_name: name,
+        amount: numericAmount,
+        visit_date: visitDate,
+      });
 
     if (error) {
       setErrorMessage(error.message);
@@ -242,81 +294,99 @@ const [editMemberId, setEditMemberId] = useState("");
     setClientName("");
     setAmount("");
     setVisitDate(today());
+    setSelectedMemberId(memberId);
     setMessage("登録しました");
     setSaving(false);
+
     await load();
   }
-function startEdit(row: ClientSale) {
-  setEditingSaleId(row.id);
-  setEditClientName(row.client_name);
-  setEditAmount(String(row.amount ?? 0));
-  setEditVisitDate(row.visit_date);
-  setEditMemberId(row.member_id);
-}
 
-function cancelEdit() {
-  setEditingSaleId(null);
-}
-async function saveEdit(row: ClientSale) {
-  if (!profile || isCast) return;
-
-  const name = editClientName.trim();
-  const numericAmount = Number(editAmount || 0);
-
-  const targetMember = members.find((m) => m.id === editMemberId);
-
-  if (!name || !targetMember?.team_id || !editVisitDate) {
-    setErrorMessage("入力内容を確認してください");
-    return;
+  function startEdit(row: ClientSale) {
+    setEditingSaleId(row.id);
+    setEditClientName(row.client_name);
+    setEditAmount(String(row.amount ?? 0));
+    setEditVisitDate(row.visit_date);
+    setEditMemberId(row.member_id);
   }
 
-  setSaving(true);
-  setErrorMessage("");
+  function cancelEdit() {
+    setEditingSaleId(null);
+  }
 
-  const { error } = await supabase
-    .from("client_sales")
-    .update({
-      member_id: editMemberId,
-      team_id: targetMember.team_id,
-      client_name: name,
-      amount: numericAmount,
-      visit_date: editVisitDate,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", row.id);
+  async function saveEdit(row: ClientSale) {
+    if (!profile || isCast) return;
 
-  if (error) {
-    setErrorMessage(error.message);
+    const targetMember = members.find(
+      (m) => m.id === editMemberId
+    );
+
+    if (
+      !editClientName.trim() ||
+      !targetMember?.team_id ||
+      !editVisitDate
+    ) {
+      setErrorMessage("入力内容を確認してください");
+      return;
+    }
+
+    setSaving(true);
+    setErrorMessage("");
+
+    const { error } = await supabase
+      .from("client_sales")
+      .update({
+        member_id: editMemberId,
+        team_id: targetMember.team_id,
+        client_name: editClientName.trim(),
+        amount: Number(editAmount || 0),
+        visit_date: editVisitDate,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", row.id);
+
+    if (error) {
+      setErrorMessage(error.message);
+      setSaving(false);
+      return;
+    }
+
+    setSelectedMemberId(editMemberId);
+    cancelEdit();
     setSaving(false);
-    return;
+
+    await load();
   }
 
-  cancelEdit();
-  setSaving(false);
-  await load();
-}
+  async function deleteSale(row: ClientSale) {
+    if (!profile || isCast) return;
 
-async function deleteSale(row: ClientSale) {
-  if (!profile || isCast) return;
+    if (
+      !window.confirm(
+        `${row.client_name}を削除しますか？`
+      )
+    ) {
+      return;
+    }
 
-  if (!window.confirm(`${row.client_name}を削除しますか？`)) return;
+    const { error } = await supabase
+      .from("client_sales")
+      .delete()
+      .eq("id", row.id);
 
-  const { error } = await supabase
-    .from("client_sales")
-    .delete()
-    .eq("id", row.id);
+    if (error) {
+      setErrorMessage(error.message);
+      return;
+    }
 
-  if (error) {
-    setErrorMessage(error.message);
-    return;
+    await load();
   }
 
-  await load();
-}
   if (loading) {
     return (
       <main className="min-h-screen bg-black text-white flex items-center justify-center">
-        <p className="text-zinc-500">読み込み中...</p>
+        <p className="text-zinc-500">
+          読み込み中...
+        </p>
       </main>
     );
   }
@@ -324,56 +394,68 @@ async function deleteSale(row: ClientSale) {
   return (
     <main className="min-h-screen bg-black text-white">
       <div className="mx-auto w-full max-w-md px-5 py-8">
-        <Link href="/" className="text-sm text-zinc-500">
+
+        <Link
+          href="/"
+          className="text-sm text-zinc-500"
+        >
           ← ホーム
         </Link>
 
         <header className="mt-6 mb-6">
-          <p className="text-xs tracking-[0.3em] text-zinc-500">SWAMP-FOG</p>
-          <h1 className="mt-2 text-3xl font-bold">クライアント</h1>
-          <p className="mt-1 text-sm text-zinc-500">CLIENT SALES</p>
+          <p className="text-xs tracking-[0.3em] text-zinc-500">
+            SWAMP-FOG
+          </p>
+
+          <h1 className="mt-2 text-3xl font-bold">
+            クライアント
+          </h1>
+
+          <p className="mt-1 text-sm text-zinc-500">
+            CLIENT SALES
+          </p>
         </header>
 
         <label className="block mb-4">
-          <span className="text-xs text-zinc-500">対象月</span>
+          <span className="text-xs text-zinc-500">
+            対象月
+          </span>
+
           <input
             type="month"
             value={month}
-            onChange={(e) => setMonth(e.target.value)}
+            onChange={(e) =>
+              setMonth(e.target.value)
+            }
             className="mt-2 w-full rounded-2xl border border-zinc-800 bg-black px-4 py-3 text-white"
           />
         </label>
 
         {errorMessage && (
           <section className="mb-4 rounded-2xl border border-red-900 p-4">
-            <p className="text-sm text-red-400">ERROR: {errorMessage}</p>
+            <p className="text-sm text-red-400">
+              ERROR: {errorMessage}
+            </p>
           </section>
         )}
 
-        <section className="grid grid-cols-3 gap-2">
-          <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-3">
-            <p className="text-[11px] text-zinc-500">今月売上</p>
-            <p className="mt-2 text-base font-bold">{yen(totalSales)}</p>
-          </div>
-          <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-3">
-            <p className="text-[11px] text-zinc-500">顧客数</p>
-            <p className="mt-2 text-base font-bold">{clientCount}人</p>
-          </div>
-          <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-3">
-            <p className="text-[11px] text-zinc-500">客単価</p>
-            <p className="mt-2 text-base font-bold">{yen(average)}</p>
-          </div>
-        </section>
-
         {!isCast && (
-          <section className="mt-5 rounded-3xl border border-zinc-800 bg-zinc-950 p-5">
-            <p className="text-xs text-zinc-500">ADD SALES</p>
-            <h2 className="mt-2 text-xl font-bold">売上を登録</h2>
+          <section className="rounded-3xl border border-zinc-800 bg-zinc-950 p-5">
+            <p className="text-xs text-zinc-500">
+              ADD SALES
+            </p>
+
+            <h2 className="mt-2 text-xl font-bold">
+              売上を登録
+            </h2>
 
             <div className="mt-5 space-y-3">
+
               <input
                 value={clientName}
-                onChange={(e) => setClientName(e.target.value)}
+                onChange={(e) =>
+                  setClientName(e.target.value)
+                }
                 placeholder="クライアント名"
                 className="w-full rounded-2xl border border-zinc-800 bg-black px-4 py-3 text-white"
               />
@@ -382,7 +464,9 @@ async function deleteSale(row: ClientSale) {
                 type="number"
                 inputMode="numeric"
                 value={amount}
-                onChange={(e) => setAmount(e.target.value)}
+                onChange={(e) =>
+                  setAmount(e.target.value)
+                }
                 placeholder="売上金額"
                 className="w-full rounded-2xl border border-zinc-800 bg-black px-4 py-3 text-white"
               />
@@ -390,18 +474,28 @@ async function deleteSale(row: ClientSale) {
               <input
                 type="date"
                 value={visitDate}
-                onChange={(e) => setVisitDate(e.target.value)}
+                onChange={(e) =>
+                  setVisitDate(e.target.value)
+                }
                 className="w-full rounded-2xl border border-zinc-800 bg-black px-4 py-3 text-white"
               />
 
               <select
                 value={memberId}
-                onChange={(e) => setMemberId(e.target.value)}
+                onChange={(e) =>
+                  setMemberId(e.target.value)
+                }
                 className="w-full rounded-2xl border border-zinc-800 bg-black px-4 py-3 text-white"
               >
-                <option value="">担当キャストを選択</option>
+                <option value="">
+                  担当キャストを選択
+                </option>
+
                 {members.map((member) => (
-                  <option key={member.id} value={member.id}>
+                  <option
+                    key={member.id}
+                    value={member.id}
+                  >
                     {member.name}
                   </option>
                 ))}
@@ -412,139 +506,379 @@ async function deleteSale(row: ClientSale) {
                 disabled={saving}
                 className="w-full rounded-2xl bg-white py-4 font-bold text-black disabled:opacity-50"
               >
-                {saving ? "登録中..." : "登録する"}
+                {saving
+                  ? "登録中..."
+                  : "登録する"}
               </button>
 
               {message && (
-                <p className="text-center text-sm text-green-400">{message}</p>
+                <p className="text-center text-sm text-green-400">
+                  {message}
+                </p>
               )}
             </div>
           </section>
         )}
-{!isCast && (
-  <section className="mt-6 rounded-3xl border border-zinc-800 bg-zinc-950 p-5">
-    <p className="text-xs text-zinc-500">SALES HISTORY</p>
-    <h2 className="mt-2 text-xl font-bold">登録履歴</h2>
 
-    <div className="mt-5 space-y-3">
-      {sales.map((row) => (
-        <div key={row.id} className="rounded-2xl bg-zinc-900 p-4">
-          {editingSaleId === row.id ? (
-            <div className="space-y-3">
-              <input
-                value={editClientName}
-                onChange={(e) => setEditClientName(e.target.value)}
-                className="w-full rounded-xl border border-zinc-700 bg-black px-3 py-3"
-              />
+        {!isCast && !selectedMemberId && (
+          <section className="mt-6">
 
-              <input
-                type="number"
-                value={editAmount}
-                onChange={(e) => setEditAmount(e.target.value)}
-                className="w-full rounded-xl border border-zinc-700 bg-black px-3 py-3"
-              />
+            <p className="text-xs text-zinc-500">
+              CAST
+            </p>
 
-              <input
-                type="date"
-                value={editVisitDate}
-                onChange={(e) => setEditVisitDate(e.target.value)}
-                className="w-full rounded-xl border border-zinc-700 bg-black px-3 py-3"
-              />
+            <h2 className="mt-2 text-xl font-bold">
+              キャストを選択
+            </h2>
 
-              <select
-                value={editMemberId}
-                onChange={(e) => setEditMemberId(e.target.value)}
-                className="w-full rounded-xl border border-zinc-700 bg-black px-3 py-3"
-              >
-                {members.map((member) => (
-                  <option key={member.id} value={member.id}>
-                    {member.name}
-                  </option>
-                ))}
-              </select>
+            <div className="mt-4 space-y-2">
 
-              <div className="grid grid-cols-2 gap-2">
+              {memberSummaries.map((member) => (
                 <button
-                  onClick={cancelEdit}
-                  className="rounded-xl border border-zinc-700 py-2"
+                  key={member.id}
+                  onClick={() =>
+                    setSelectedMemberId(
+                      member.id
+                    )
+                  }
+                  className="w-full rounded-2xl border border-zinc-800 bg-zinc-950 p-4 text-left"
                 >
-                  キャンセル
-                </button>
 
-                <button
-                  onClick={() => saveEdit(row)}
-                  className="rounded-xl bg-white py-2 font-bold text-black"
-                >
-                  保存
+                  <div className="flex items-center justify-between gap-3">
+
+                    <div>
+                      <p className="font-bold">
+                        {member.name}
+                      </p>
+
+                      <p className="mt-1 text-xs text-zinc-500">
+                        顧客 {member.clients}人
+                      </p>
+                    </div>
+
+                    <div className="text-right">
+
+                      <p className="font-bold">
+                        {yen(member.total)}
+                      </p>
+
+                      <p className="mt-1 text-xs text-zinc-500">
+                        →
+                      </p>
+                    </div>
+                  </div>
                 </button>
-              </div>
+              ))}
+
             </div>
-          ) : (
-            <>
-              <div className="flex justify-between">
-                <div>
-                  <p className="font-bold">{row.client_name}</p>
-                  <p className="mt-1 text-xs text-zinc-500">
-                    {row.visit_date}
+          </section>
+        )}
+
+        {activeMemberId && (
+          <>
+
+            <section className="mt-6">
+
+              {!isCast && (
+                <button
+                  onClick={() => {
+                    setSelectedMemberId(null);
+                    setEditingSaleId(null);
+                  }}
+                  className="mb-4 text-sm text-zinc-500"
+                >
+                  ← キャスト一覧
+                </button>
+              )}
+
+              <p className="text-xs text-zinc-500">
+                CLIENTS
+              </p>
+
+              <h2 className="mt-2 text-2xl font-bold">
+                {selectedMemberName}
+                のクライアント
+              </h2>
+
+              <div className="mt-4 grid grid-cols-3 gap-2">
+
+                <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-3">
+                  <p className="text-[11px] text-zinc-500">
+                    今月売上
+                  </p>
+
+                  <p className="mt-2 text-base font-bold">
+                    {yen(totalSales)}
                   </p>
                 </div>
 
-                <p className="font-bold">{yen(row.amount)}</p>
-              </div>
+                <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-3">
 
-              <div className="mt-3 grid grid-cols-2 gap-2">
-                <button
-                  onClick={() => startEdit(row)}
-                  className="rounded-xl border border-zinc-700 py-2"
-                >
-                  編集
-                </button>
+                  <p className="text-[11px] text-zinc-500">
+                    顧客数
+                  </p>
 
-                <button
-                  onClick={() => deleteSale(row)}
-                  className="rounded-xl border border-red-900 py-2 text-red-400"
-                >
-                  削除
-                </button>
-              </div>
-            </>
-          )}
-        </div>
-      ))}
-    </div>
-  </section>
-)}
-        <section className="mt-6 rounded-3xl border border-zinc-800 bg-zinc-950 p-5">
-          <p className="text-xs text-zinc-500">THIS MONTH</p>
-          <h2 className="mt-2 text-xl font-bold">クライアント別売上</h2>
+                  <p className="mt-2 text-base font-bold">
+                    {clientCount}人
+                  </p>
 
-          <div className="mt-5 space-y-2">
-            {groupedClients.length === 0 ? (
-              <p className="text-sm text-zinc-500">今月の売上登録はありません</p>
-            ) : (
-              groupedClients.map((client, index) => (
-                <div
-                  key={client.clientName}
-                  className="rounded-2xl bg-zinc-900 px-4 py-4"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-xs text-zinc-600">{index + 1}位</p>
-                      <p className="mt-1 font-bold">{client.clientName}</p>
-                    </div>
-
-                    <p className="font-bold">{yen(client.total)}</p>
-                  </div>
-
-                  <div className="mt-3 flex justify-between text-xs text-zinc-500">
-                    <span>来店 {client.visits}回</span>
-                    <span>最終 {client.latest.replaceAll("-", "/")}</span>
-                  </div>
                 </div>
-              ))
+
+                <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-3">
+
+                  <p className="text-[11px] text-zinc-500">
+                    客単価
+                  </p>
+
+                  <p className="mt-2 text-base font-bold">
+                    {yen(average)}
+                  </p>
+
+                </div>
+
+              </div>
+            </section>
+
+            <section className="mt-6 rounded-3xl border border-zinc-800 bg-zinc-950 p-5">
+
+              <p className="text-xs text-zinc-500">
+                THIS MONTH
+              </p>
+
+              <h2 className="mt-2 text-xl font-bold">
+                クライアント一覧
+              </h2>
+
+              <div className="mt-5 space-y-2">
+
+                {groupedClients.length === 0 ? (
+
+                  <p className="text-sm text-zinc-500">
+                    今月の売上登録はありません
+                  </p>
+
+                ) : (
+
+                  groupedClients.map(
+                    (client, index) => (
+
+                      <div
+                        key={client.clientName}
+                        className="rounded-2xl bg-zinc-900 px-4 py-4"
+                      >
+
+                        <div className="flex items-start justify-between gap-3">
+
+                          <div>
+
+                            <p className="text-xs text-zinc-600">
+                              {index + 1}位
+                            </p>
+
+                            <p className="mt-1 font-bold">
+                              {client.clientName}
+                            </p>
+
+                          </div>
+
+                          <p className="font-bold">
+                            {yen(client.total)}
+                          </p>
+
+                        </div>
+
+                        <div className="mt-3 flex justify-between text-xs text-zinc-500">
+
+                          <span>
+                            来店 {client.visits}回
+                          </span>
+
+                          <span>
+                            最終{" "}
+                            {client.latest.replaceAll(
+                              "-",
+                              "/"
+                            )}
+                          </span>
+
+                        </div>
+
+                      </div>
+                    )
+                  )
+                )}
+
+              </div>
+            </section>
+
+            {!isCast && (
+
+              <section className="mt-6 rounded-3xl border border-zinc-800 bg-zinc-950 p-5">
+
+                <p className="text-xs text-zinc-500">
+                  SALES HISTORY
+                </p>
+
+                <h2 className="mt-2 text-xl font-bold">
+                  登録履歴
+                </h2>
+
+                <div className="mt-5 space-y-3">
+
+                  {visibleSales.map((row) => (
+
+                    <div
+                      key={row.id}
+                      className="rounded-2xl bg-zinc-900 p-4"
+                    >
+
+                      {editingSaleId === row.id ? (
+
+                        <div className="space-y-3">
+
+                          <input
+                            value={editClientName}
+                            onChange={(e) =>
+                              setEditClientName(
+                                e.target.value
+                              )
+                            }
+                            className="w-full rounded-xl border border-zinc-700 bg-black px-3 py-3"
+                          />
+
+                          <input
+                            type="number"
+                            value={editAmount}
+                            onChange={(e) =>
+                              setEditAmount(
+                                e.target.value
+                              )
+                            }
+                            className="w-full rounded-xl border border-zinc-700 bg-black px-3 py-3"
+                          />
+
+                          <input
+                            type="date"
+                            value={editVisitDate}
+                            onChange={(e) =>
+                              setEditVisitDate(
+                                e.target.value
+                              )
+                            }
+                            className="w-full rounded-xl border border-zinc-700 bg-black px-3 py-3"
+                          />
+
+                          <select
+                            value={editMemberId}
+                            onChange={(e) =>
+                              setEditMemberId(
+                                e.target.value
+                              )
+                            }
+                            className="w-full rounded-xl border border-zinc-700 bg-black px-3 py-3"
+                          >
+
+                            {members.map(
+                              (member) => (
+
+                                <option
+                                  key={member.id}
+                                  value={member.id}
+                                >
+                                  {member.name}
+                                </option>
+
+                              )
+                            )}
+
+                          </select>
+
+                          <div className="grid grid-cols-2 gap-2">
+
+                            <button
+                              onClick={cancelEdit}
+                              className="rounded-xl border border-zinc-700 py-2"
+                            >
+                              キャンセル
+                            </button>
+
+                            <button
+                              onClick={() =>
+                                saveEdit(row)
+                              }
+                              disabled={saving}
+                              className="rounded-xl bg-white py-2 font-bold text-black disabled:opacity-50"
+                            >
+                              {saving
+                                ? "保存中..."
+                                : "保存"}
+                            </button>
+
+                          </div>
+                        </div>
+
+                      ) : (
+
+                        <>
+
+                          <div className="flex justify-between gap-3">
+
+                            <div>
+
+                              <p className="font-bold">
+                                {row.client_name}
+                              </p>
+
+                              <p className="mt-1 text-xs text-zinc-500">
+                                {row.visit_date.replaceAll(
+                                  "-",
+                                  "/"
+                                )}
+                              </p>
+
+                            </div>
+
+                            <p className="font-bold">
+                              {yen(row.amount)}
+                            </p>
+
+                          </div>
+
+                          <div className="mt-3 grid grid-cols-2 gap-2">
+
+                            <button
+                              onClick={() =>
+                                startEdit(row)
+                              }
+                              className="rounded-xl border border-zinc-700 py-2"
+                            >
+                              編集
+                            </button>
+
+                            <button
+                              onClick={() =>
+                                deleteSale(row)
+                              }
+                              className="rounded-xl border border-red-900 py-2 text-red-400"
+                            >
+                              削除
+                            </button>
+
+                          </div>
+
+                        </>
+                      )}
+
+                    </div>
+                  ))}
+
+                </div>
+              </section>
             )}
-          </div>
-        </section>
+
+          </>
+        )}
+
       </div>
     </main>
   );
