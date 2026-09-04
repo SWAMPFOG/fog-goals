@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
+import { normalizeRole } from "@/utils/permissions";
 
 type DailyResult = {
   sales: number | null;
@@ -15,7 +16,7 @@ type DailyResult = {
   inhouse_count: number | null;
 };
 
-type StoreGoal = {
+type ScopeGoal = {
   target_sales: number;
   champagne_target: number;
   visit_count_target: number;
@@ -30,8 +31,15 @@ type UserProfile = {
   display_name: string | null;
 };
 
+type TeamMustProgress = {
+  team_must_sales: number;
+  team_existing_client_sales: number;
+  team_must_rate: number;
+  team_must_remaining: number;
+};
+
 function yen(value: number) {
-  return `¥${value.toLocaleString("ja-JP")}`;
+  return `¥${Number(value || 0).toLocaleString("ja-JP")}`;
 }
 
 function currentMonth() {
@@ -43,18 +51,21 @@ function currentMonth() {
   };
 }
 
-function rate(current: number, target: number) {
+function rawRate(current: number, target: number) {
   if (target <= 0) return 0;
 
-  return Math.min(
-    100,
-    Math.round((current / target) * 100)
-  );
+  return Math.round((current / target) * 1000) / 10;
+}
+
+function progressWidth(current: number, target: number) {
+  if (target <= 0) return 0;
+
+  return Math.min(100, (current / target) * 100);
 }
 
 function roleLabel(role?: string | null) {
-  switch (role) {
-    case "cast":
+  switch (normalizeRole(role ?? null)) {
+    case "member":
       return "キャスト";
 
     case "team_manager":
@@ -78,39 +89,68 @@ function roleLabel(role?: string | null) {
 }
 
 function scopeLabel(role?: string | null) {
-  switch (role) {
-    case "cast":
-      return "自分の月間実績";
-
+  switch (normalizeRole(role ?? null)) {
     case "team_manager":
-      return "自チーム月間実績";
+      return "自チーム";
 
     case "department_manager":
-      return "担当営業部月間実績";
+      return "担当営業部";
+
+    case "business_manager":
+    case "company_manager":
+    case "chairman":
+      return "店舗";
 
     default:
-      return "店舗月間実績";
+      return "月間";
   }
 }
 
-function canSeeStore(profile: UserProfile | null) {
-  return (
-    !!profile &&
-    [
-      "business_manager",
-      "company_manager",
-      "chairman",
-    ].includes(profile.role)
-  );
+function goalLabel(role?: string | null) {
+  switch (normalizeRole(role ?? null)) {
+    case "team_manager":
+      return "チーム売上目標";
+
+    case "department_manager":
+      return "営業部売上目標";
+
+    case "business_manager":
+    case "company_manager":
+    case "chairman":
+      return "店舗売上目標";
+
+    default:
+      return "売上目標";
+  }
+}
+
+function isStoreManager(role?: string | null) {
+  const normalized = normalizeRole(role ?? null);
+
+  return [
+    "business_manager",
+    "company_manager",
+    "chairman",
+  ].includes(normalized);
 }
 
 export default function HomePage() {
   const router = useRouter();
-  const [supabase] = useState(() => createClient());
 
-  const [loading, setLoading] = useState(true);
-  const [email, setEmail] = useState("");
-  const [errorMessage, setErrorMessage] = useState("");
+  const [supabase] = useState(() =>
+    createClient()
+  );
+
+  const [loading, setLoading] =
+    useState(true);
+
+  const [email, setEmail] =
+    useState("");
+
+  const [
+    errorMessage,
+    setErrorMessage,
+  ] = useState("");
 
   const [profile, setProfile] =
     useState<UserProfile | null>(null);
@@ -118,17 +158,24 @@ export default function HomePage() {
   const [results, setResults] =
     useState<DailyResult[]>([]);
 
-  const [storeGoal, setStoreGoal] =
-    useState<StoreGoal | null>(null);
+  const [goal, setGoal] =
+    useState<ScopeGoal | null>(null);
 
-  const [castMemberGoal, setCastMemberGoal] =
-    useState<StoreGoal | null>(null);
+  const [
+    teamMustProgress,
+    setTeamMustProgress,
+  ] =
+    useState<TeamMustProgress | null>(
+      null
+    );
 
-  const [castTeamGoal, setCastTeamGoal] =
-    useState<StoreGoal | null>(null);
-
-  const [castTeamSales, setCastTeamSales] =
-    useState(0);
+  const [
+    resolvedDepartmentId,
+    setResolvedDepartmentId,
+  ] =
+    useState<string | null>(
+      null
+    );
 
   const month = useMemo(
     () => currentMonth(),
@@ -139,13 +186,20 @@ export default function HomePage() {
     async function load() {
       setLoading(true);
       setErrorMessage("");
+      setTeamMustProgress(
+        null
+      );
 
       const {
         data: { user },
-      } = await supabase.auth.getUser();
+      } =
+        await supabase.auth.getUser();
 
       if (!user) {
-        router.replace("/login");
+        router.replace(
+          "/login"
+        );
+
         return;
       }
 
@@ -160,227 +214,114 @@ export default function HomePage() {
         .eq("id", user.id)
         .maybeSingle();
 
-      if (profileError || !profileData) {
+      if (
+        profileError ||
+        !profileData
+      ) {
         setErrorMessage(
           profileError?.message ??
             "プロフィールが見つかりません"
         );
 
         setLoading(false);
+
         return;
       }
 
-      const p = profileData as UserProfile;
+      const p =
+        profileData as UserProfile;
 
-      setProfile(p);
-      setEmail(user.email ?? "");
-
-      const startDate = `${month.key}-01`;
-
-      const [year, monthNumber] =
-        month.key.split("-").map(Number);
-
-      const next = new Date(
-        year,
-        monthNumber,
-        1
-      );
-
-      const nextMonth =
-        `${next.getFullYear()}-${String(
-          next.getMonth() + 1
-        ).padStart(2, "0")}-01`;
-
-      let allowedMemberIds: string[] | null =
-        null;
-
-      if (p.role === "cast") {
-        allowedMemberIds = p.member_id
-          ? [p.member_id]
-          : [];
-      } else if (p.role === "team_manager") {
-        if (!p.team_id) {
-          allowedMemberIds = [];
-        } else {
-          const { data, error } =
-            await supabase
-              .from("members")
-              .select("id")
-              .eq("team_id", p.team_id);
-
-          if (error) {
-            setErrorMessage(error.message);
-            setLoading(false);
-            return;
-          }
-
-          allowedMemberIds = (
-            data ?? []
-          ).map(
-            (row: { id: string }) =>
-              row.id
-          );
-        }
-      } else if (
-        p.role === "department_manager"
-      ) {
-        if (!p.department_id) {
-          allowedMemberIds = [];
-        } else {
-          const {
-            data: teamData,
-            error: teamError,
-          } = await supabase
-            .from("teams")
-            .select("id")
-            .eq(
-              "department_id",
-              p.department_id
-            );
-
-          if (teamError) {
-            setErrorMessage(
-              teamError.message
-            );
-
-            setLoading(false);
-            return;
-          }
-
-          const teamIds = (
-            teamData ?? []
-          ).map(
-            (row: { id: string }) =>
-              row.id
-          );
-
-          if (teamIds.length === 0) {
-            allowedMemberIds = [];
-          } else {
-            const {
-              data: memberData,
-              error: memberError,
-            } = await supabase
-              .from("members")
-              .select("id")
-              .in("team_id", teamIds);
-
-            if (memberError) {
-              setErrorMessage(
-                memberError.message
-              );
-
-              setLoading(false);
-              return;
-            }
-
-            allowedMemberIds = (
-              memberData ?? []
-            ).map(
-              (row: { id: string }) =>
-                row.id
-            );
-          }
-        }
-      } else if (
-        [
-          "business_manager",
-          "company_manager",
-          "chairman",
-        ].includes(p.role)
-      ) {
-        allowedMemberIds = null;
-      } else {
-        allowedMemberIds = [];
-      }
-
-      let dailyQuery = supabase
-        .from("daily_results")
-        .select(
-          "sales, champagne_count, visit_count, repeat_count, first_contact_count, send_count, inhouse_count"
-        )
-        .gte(
-          "business_date",
-          startDate
-        )
-        .lt(
-          "business_date",
-          nextMonth
+      const normalizedRole =
+        normalizeRole(
+          p.role ?? null
         );
 
-      if (allowedMemberIds !== null) {
-        if (
-          allowedMemberIds.length === 0
-        ) {
-          setResults([]);
-        } else {
-          dailyQuery =
-            dailyQuery.in(
-              "member_id",
-              allowedMemberIds
-            );
+      setProfile(p);
 
-          const {
-            data,
-            error,
-          } = await dailyQuery;
+      setEmail(
+        user.email ?? ""
+      );
 
-          if (error) {
-            setErrorMessage(
-              error.message
-            );
+      if (
+        normalizedRole ===
+        "member"
+      ) {
+        setResults([]);
+        setGoal(null);
+        setLoading(false);
 
-            setLoading(false);
-            return;
-          }
+        return;
+      }
 
-          setResults(data ?? []);
-        }
-      } else {
-        const {
-          data,
-          error,
-        } = await dailyQuery;
+      const startDate =
+        `${month.key}-01`;
 
-        if (error) {
+      const [
+        year,
+        monthNumber,
+      ] = month.key
+        .split("-")
+        .map(Number);
+
+      const nextDate =
+        new Date(
+          year,
+          monthNumber,
+          1
+        );
+
+      const nextMonth =
+        `${nextDate.getFullYear()}-${String(
+          nextDate.getMonth() +
+            1
+        ).padStart(
+          2,
+          "0"
+        )}-01`;
+
+      if (
+        normalizedRole ===
+        "team_manager"
+      ) {
+        if (!p.team_id) {
           setErrorMessage(
-            error.message
+            "所属チームが設定されていません"
           );
 
           setLoading(false);
+
           return;
         }
 
-        setResults(data ?? []);
-      }
-
-      if (
-        p.role === "cast" &&
-        p.member_id &&
-        p.team_id
-      ) {
         const [
-          memberGoalResult,
-          teamGoalResult,
-          teamDailyResult,
+          dailyResult,
+          goalResult,
+          mustResult,
         ] = await Promise.all([
           supabase
-            .from("monthly_goals")
+            .from(
+              "daily_results"
+            )
             .select(
-              "target_sales, champagne_target, visit_count_target"
+              "sales, champagne_count, visit_count, repeat_count, first_contact_count, send_count, inhouse_count"
             )
             .eq(
-              "member_id",
-              p.member_id
+              "team_id",
+              p.team_id
             )
-            .eq(
-              "target_month",
+            .gte(
+              "business_date",
               startDate
             )
-            .maybeSingle(),
+            .lt(
+              "business_date",
+              nextMonth
+            ),
 
           supabase
-            .from("team_goals")
+            .from(
+              "team_goals"
+            )
             .select(
               "target_sales, champagne_target, visit_count_target"
             )
@@ -395,61 +336,263 @@ export default function HomePage() {
             .maybeSingle(),
 
           supabase.rpc(
-            "get_my_team_sales_total",
+            "get_my_team_must_progress",
             {
-              p_start_date:
+              p_month:
                 startDate,
-
-              p_end_date:
-                nextMonth,
             }
           ),
         ]);
 
-        if (memberGoalResult.error) {
+        const firstError =
+          dailyResult.error ||
+          goalResult.error ||
+          mustResult.error;
+
+        if (firstError) {
           setErrorMessage(
-            memberGoalResult.error.message
+            firstError.message
           );
 
           setLoading(false);
+
           return;
         }
 
-        if (teamGoalResult.error) {
-          setErrorMessage(
-            teamGoalResult.error.message
-          );
-
-          setLoading(false);
-          return;
-        }
-
-        if (teamDailyResult.error) {
-          setErrorMessage(
-            teamDailyResult.error.message
-          );
-
-          setLoading(false);
-          return;
-        }
-
-        setCastMemberGoal(
-          memberGoalResult.data ?? null
+        setResults(
+          (dailyResult.data ??
+            []) as DailyResult[]
         );
 
-        setCastTeamGoal(
-          teamGoalResult.data ?? null
+        setGoal(
+          (goalResult.data ??
+            null) as
+            | ScopeGoal
+            | null
         );
 
-        setCastTeamSales(
-          Number(
-            teamDailyResult.data ?? 0
+        const mustRow =
+          (mustResult.data ??
+            [])[0] as any;
+
+        setTeamMustProgress(
+          mustRow
+            ? {
+                team_must_sales:
+                  Number(
+                    mustRow.team_must_sales ??
+                      0
+                  ),
+
+                team_existing_client_sales:
+                  Number(
+                    mustRow.team_existing_client_sales ??
+                      0
+                  ),
+
+                team_must_rate:
+                  Number(
+                    mustRow.team_must_rate ??
+                      0
+                  ),
+
+                team_must_remaining:
+                  Number(
+                    mustRow.team_must_remaining ??
+                      0
+                  ),
+              }
+            : null
+        );
+
+        setLoading(false);
+
+        return;
+      }
+
+      if (
+        normalizedRole ===
+        "department_manager"
+      ) {
+        let departmentId =
+          p.department_id ??
+          null;
+
+        if (
+          !departmentId &&
+          p.team_id
+        ) {
+          const {
+            data: ownTeam,
+            error:
+              ownTeamError,
+          } = await supabase
+            .from("teams")
+            .select(
+              "department_id"
+            )
+            .eq(
+              "id",
+              p.team_id
+            )
+            .maybeSingle();
+
+          if (
+            ownTeamError
+          ) {
+            setErrorMessage(
+              ownTeamError.message
+            );
+
+            setLoading(false);
+
+            return;
+          }
+
+          departmentId =
+            ownTeam?.department_id ??
+            null;
+        }
+
+        if (!departmentId) {
+          setErrorMessage(
+            "担当営業部が設定されていません"
+          );
+
+          setLoading(false);
+
+          return;
+        }
+
+        setResolvedDepartmentId(
+          departmentId
+        );
+
+        const [
+          teamResult,
+          goalResult,
+        ] = await Promise.all([
+          supabase
+            .from("teams")
+            .select("id")
+            .eq(
+              "department_id",
+              departmentId
+            )
+            .eq(
+              "is_active",
+              true
+            ),
+
+          supabase
+            .from(
+              "department_goals"
+            )
+            .select(
+              "target_sales, champagne_target, visit_count_target"
+            )
+            .eq(
+              "department_id",
+              departmentId
+            )
+            .eq(
+              "target_month",
+              startDate
+            )
+            .maybeSingle(),
+        ]);
+
+        if (
+          teamResult.error ||
+          goalResult.error
+        ) {
+          setErrorMessage(
+            teamResult.error
+              ?.message ??
+              goalResult.error
+                ?.message ??
+              "読込エラー"
+          );
+
+          setLoading(false);
+
+          return;
+        }
+
+        const teamIds =
+          (
+            teamResult.data ??
+            []
+          ).map(
+            (row) => row.id
+          );
+
+        if (
+          teamIds.length ===
+          0
+        ) {
+          setResults([]);
+
+          setGoal(
+            (goalResult.data ??
+              null) as
+              | ScopeGoal
+              | null
+          );
+
+          setLoading(false);
+
+          return;
+        }
+
+        const {
+          data: dailyData,
+          error: dailyError,
+        } = await supabase
+          .from(
+            "daily_results"
           )
+          .select(
+            "sales, champagne_count, visit_count, repeat_count, first_contact_count, send_count, inhouse_count"
+          )
+          .in(
+            "team_id",
+            teamIds
+          )
+          .gte(
+            "business_date",
+            startDate
+          )
+          .lt(
+            "business_date",
+            nextMonth
+          );
+
+        if (dailyError) {
+          setErrorMessage(
+            dailyError.message
+          );
+
+          setLoading(false);
+
+          return;
+        }
+
+        setResults(
+          (dailyData ??
+            []) as DailyResult[]
         );
-      } else {
-        setCastMemberGoal(null);
-        setCastTeamGoal(null);
-        setCastTeamSales(0);
+
+        setGoal(
+          (goalResult.data ??
+            null) as
+            | ScopeGoal
+            | null
+        );
+
+        setLoading(false);
+
+        return;
       }
 
       if (
@@ -457,71 +600,81 @@ export default function HomePage() {
           "business_manager",
           "company_manager",
           "chairman",
-        ].includes(p.role)
+        ].includes(
+          normalizedRole
+        )
       ) {
-        const {
-          data: goalData,
-          error: goalError,
-        } = await supabase
-          .from("store_goals")
-          .select(
-            "target_sales, champagne_target, visit_count_target"
-          )
-          .eq(
-            "target_month",
-            startDate
-          )
-          .maybeSingle();
+        const [
+          dailyResult,
+          goalResult,
+        ] = await Promise.all([
+          supabase
+            .from(
+              "daily_results"
+            )
+            .select(
+              "sales, champagne_count, visit_count, repeat_count, first_contact_count, send_count, inhouse_count"
+            )
+            .gte(
+              "business_date",
+              startDate
+            )
+            .lt(
+              "business_date",
+              nextMonth
+            ),
 
-        if (goalError) {
+          supabase
+            .from(
+              "store_goals"
+            )
+            .select(
+              "target_sales, champagne_target, visit_count_target"
+            )
+            .eq(
+              "target_month",
+              startDate
+            )
+            .maybeSingle(),
+        ]);
+
+        if (
+          dailyResult.error ||
+          goalResult.error
+        ) {
           setErrorMessage(
-            goalError.message
+            dailyResult.error
+              ?.message ??
+              goalResult.error
+                ?.message ??
+              "読込エラー"
           );
 
           setLoading(false);
+
           return;
         }
 
-        setStoreGoal(
-          goalData ?? null
+        setResults(
+          (dailyResult.data ??
+            []) as DailyResult[]
         );
-      } else if (
-        p.role === "team_manager" &&
-        p.team_id
-      ) {
-        const {
-          data: goalData,
-          error: goalError,
-        } = await supabase
-          .from("team_goals")
-          .select(
-            "target_sales, champagne_target, visit_count_target"
-          )
-          .eq(
-            "team_id",
-            p.team_id
-          )
-          .eq(
-            "target_month",
-            startDate
-          )
-          .maybeSingle();
 
-        if (goalError) {
-          setErrorMessage(
-            goalError.message
-          );
-
-          setLoading(false);
-          return;
-        }
-
-        setStoreGoal(
-          goalData ?? null
+        setGoal(
+          (goalResult.data ??
+            null) as
+            | ScopeGoal
+            | null
         );
-      } else {
-        setStoreGoal(null);
+
+        setLoading(false);
+
+        return;
       }
+
+      setErrorMessage(
+        "このアカウントの役職設定を確認してください"
+      );
 
       setLoading(false);
     }
@@ -533,9 +686,9 @@ export default function HomePage() {
     month.key,
   ]);
 
-  const totals = useMemo(
-    () =>
-      results.reduce(
+  const totals =
+    useMemo(() => {
+      return results.reduce(
         (sum, row) => ({
           sales:
             sum.sales +
@@ -546,19 +699,22 @@ export default function HomePage() {
           champagne:
             sum.champagne +
             Number(
-              row.champagne_count ?? 0
+              row.champagne_count ??
+                0
             ),
 
           visits:
             sum.visits +
             Number(
-              row.visit_count ?? 0
+              row.visit_count ??
+                0
             ),
 
           repeats:
             sum.repeats +
             Number(
-              row.repeat_count ?? 0
+              row.repeat_count ??
+                0
             ),
 
           firstContacts:
@@ -571,13 +727,15 @@ export default function HomePage() {
           sends:
             sum.sends +
             Number(
-              row.send_count ?? 0
+              row.send_count ??
+                0
             ),
 
           inhouse:
             sum.inhouse +
             Number(
-              row.inhouse_count ?? 0
+              row.inhouse_count ??
+                0
             ),
         }),
         {
@@ -589,91 +747,113 @@ export default function HomePage() {
           sends: 0,
           inhouse: 0,
         }
-      ),
-    [results]
-  );
+      );
+    }, [results]);
+
+  const normalizedRole =
+    normalizeRole(
+      profile?.role ??
+        null
+    );
+
+  const storeView =
+    isStoreManager(
+      profile?.role ??
+        null
+    );
 
   const salesTarget =
-    storeGoal?.target_sales ?? 0;
+    Number(
+      goal?.target_sales ??
+        0
+    );
 
   const champagneTarget =
-    storeGoal?.champagne_target ?? 0;
+    Number(
+      goal?.champagne_target ??
+        0
+    );
 
   const visitTarget =
-    storeGoal?.visit_count_target ?? 0;
-
-  const castMemberTarget =
-    castMemberGoal?.target_sales ?? 0;
-
-  const castTeamTarget =
-    castTeamGoal?.target_sales ?? 0;
-
-  const castMemberRate =
-    rate(
-      totals.sales,
-      castMemberTarget
-    );
-
-  const castTeamRate =
-    rate(
-      castTeamSales,
-      castTeamTarget
-    );
-
-  const castContribution =
-    castTeamTarget > 0
-      ? Math.round(
-          (totals.sales /
-            castTeamTarget) *
-            1000
-        ) / 10
-      : 0;
-
-  const salesRemaining =
-    Math.max(
-      0,
-      salesTarget - totals.sales
-    );
-
-  const champagneRemaining =
-    Math.max(
-      0,
-      champagneTarget -
-        totals.champagne
-    );
-
-  const visitRemaining =
-    Math.max(
-      0,
-      visitTarget -
-        totals.visits
+    Number(
+      goal?.visit_count_target ??
+        0
     );
 
   const salesRate =
-    rate(
+    rawRate(
       totals.sales,
       salesTarget
     );
 
   const champagneRate =
-    rate(
+    rawRate(
       totals.champagne,
       champagneTarget
     );
 
   const visitRate =
-    rate(
+    rawRate(
       totals.visits,
       visitTarget
     );
 
-  const storeView =
-    canSeeStore(profile);
+  const salesRemaining =
+    Math.max(
+      0,
+      salesTarget -
+        totals.sales
+    );
+
+  const salesOver =
+    Math.max(
+      0,
+      totals.sales -
+        salesTarget
+    );
+
+  const teamMustSales =
+    Number(
+      teamMustProgress
+        ?.team_must_sales ??
+        0
+    );
+
+  const teamExistingClientSales =
+    Number(
+      teamMustProgress
+        ?.team_existing_client_sales ??
+        0
+    );
+
+  const teamMustRate =
+    Number(
+      teamMustProgress
+        ?.team_must_rate ??
+        0
+    );
+
+  const teamMustRemaining =
+    Number(
+      teamMustProgress
+        ?.team_must_remaining ??
+        0
+    );
+
+  const teamMustOver =
+    Math.max(
+      0,
+      teamExistingClientSales -
+        teamMustSales
+    );
 
   async function handleLogout() {
     await supabase.auth.signOut();
 
-    router.replace("/login");
+    router.replace(
+      "/login"
+    );
+
     router.refresh();
   }
 
@@ -687,7 +867,10 @@ export default function HomePage() {
     );
   }
 
-  if (profile?.role === "cast") {
+  if (
+    normalizedRole ===
+    "member"
+  ) {
     return (
       <main className="min-h-screen bg-black text-white">
         <div className="mx-auto w-full max-w-md px-5 py-8">
@@ -702,13 +885,15 @@ export default function HomePage() {
               </h1>
 
               <p className="mt-1 text-sm text-zinc-500">
-                {profile.display_name ??
+                {profile?.display_name ??
                   "CAST"}
               </p>
             </div>
 
             <button
-              onClick={handleLogout}
+              onClick={
+                handleLogout
+              }
               className="rounded-xl border border-zinc-800 px-3 py-2 text-xs text-zinc-400"
             >
               ログアウト
@@ -718,7 +903,8 @@ export default function HomePage() {
           {errorMessage && (
             <section className="mb-4 rounded-3xl border border-red-900 p-4">
               <p className="text-sm text-red-400">
-                ERROR: {errorMessage}
+                ERROR:{" "}
+                {errorMessage}
               </p>
             </section>
           )}
@@ -733,7 +919,7 @@ export default function HomePage() {
             </h2>
 
             <div className="mt-5 grid grid-cols-2 gap-4">
-              {profile.member_id ? (
+              {profile?.member_id ? (
                 <Link
                   href={`/members/${profile.member_id}`}
                   className="flex min-h-36 flex-col justify-between rounded-3xl border border-zinc-800 bg-zinc-950 p-5"
@@ -770,7 +956,7 @@ export default function HomePage() {
                 </div>
               )}
 
-              {profile.team_id ? (
+              {profile?.team_id ? (
                 <Link
                   href={`/teams/${profile.team_id}`}
                   className="flex min-h-36 flex-col justify-between rounded-3xl border border-zinc-800 bg-zinc-950 p-5"
@@ -813,7 +999,7 @@ export default function HomePage() {
               >
                 <div>
                   <p className="text-xs text-zinc-500">
-                    CLIENT SALES
+                    CLIENTS
                   </p>
 
                   <p className="mt-2 text-xl font-bold">
@@ -821,7 +1007,7 @@ export default function HomePage() {
                   </p>
 
                   <p className="mt-2 text-sm text-zinc-500">
-                    今月のクライアント別売上
+                    売上・必達を確認
                   </p>
                 </div>
 
@@ -837,9 +1023,9 @@ export default function HomePage() {
   }
 
   return (
-    <main className="min-h-screen bg-black text-white pb-24">
+    <main className="min-h-screen bg-black text-white pb-28">
       <div className="mx-auto w-full max-w-md px-5 pt-4">
-        <header className="sticky top-0 z-40 -mx-5 mb-6 border-b border-zinc-900 bg-black/90 px-5 pb-4 pt-4 backdrop-blur-xl">
+        <header className="sticky top-0 z-40 -mx-5 mb-5 border-b border-zinc-900 bg-black/90 px-5 pb-4 pt-4 backdrop-blur-xl">
           <div className="flex items-start justify-between gap-4">
             <div>
               <p className="text-xs tracking-[0.3em] text-zinc-500">
@@ -851,24 +1037,32 @@ export default function HomePage() {
               </h1>
 
               <p className="mt-1 text-sm text-zinc-500">
-                Team Goal Management
+                {roleLabel(
+                  profile?.role
+                )}
+
+                {profile?.display_name
+                  ? `・${profile.display_name}`
+                  : ""}
               </p>
             </div>
 
             <button
-              onClick={handleLogout}
+              onClick={
+                handleLogout
+              }
               className="rounded-xl border border-zinc-800 px-3 py-2 text-xs text-zinc-400"
             >
               ログアウト
             </button>
           </div>
 
-          <div className="mt-4 flex items-end justify-between">
-            <p className="text-xs text-zinc-700">
+          <div className="mt-4 flex items-end justify-between gap-3">
+            <p className="truncate text-xs text-zinc-700">
               {email}
             </p>
 
-            <div className="text-right">
+            <div className="shrink-0 text-right">
               <p className="text-xs text-zinc-500">
                 対象月
               </p>
@@ -880,458 +1074,367 @@ export default function HomePage() {
           </div>
         </header>
 
-        {profile && (
-          <section className="mb-4 rounded-3xl border border-zinc-800 bg-zinc-950 p-5">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs text-zinc-500">
-                  YOUR ROLE
-                </p>
-
-                <p className="mt-1 text-xl font-bold">
-                  {roleLabel(profile.role)}
-                </p>
-              </div>
-
-              {profile.display_name && (
-                <p className="text-sm text-zinc-500">
-                  {profile.display_name}
-                </p>
-              )}
-            </div>
-
-            <div className="mt-5 grid grid-cols-2 gap-3">
-              {profile.role ===
-                "team_manager" &&
-                profile.team_id && (
-                  <>
-                    <Link
-                      href={`/teams/${profile.team_id}`}
-                      className="rounded-2xl border border-zinc-800 p-4"
-                    >
-                      <p className="text-xs text-zinc-500">
-                        TEAM
-                      </p>
-
-                      <p className="mt-1 font-bold">
-                        自チーム
-                      </p>
-                    </Link>
-
-                    <Link
-                      href="/clients"
-                      className="rounded-2xl border border-zinc-800 p-4"
-                    >
-                      <p className="text-xs text-zinc-500">
-                        CLIENT SALES
-                      </p>
-
-                      <p className="mt-1 font-bold">
-                        クライアント売上
-                      </p>
-                    </Link>
-
-                    <Link
-                      href="/daily"
-                      className="rounded-2xl border border-zinc-800 p-4"
-                    >
-                      <p className="text-xs text-zinc-500">
-                        DAILY
-                      </p>
-
-                      <p className="mt-1 font-bold">
-                        日報入力
-                      </p>
-                    </Link>
-                  </>
-                )}
-
-              {profile.role ===
-                "department_manager" &&
-                profile.department_id && (
-                  <>
-                    <Link
-                      href={`/departments/${profile.department_id}`}
-                      className="rounded-2xl border border-zinc-800 p-4"
-                    >
-                      <p className="text-xs text-zinc-500">
-                        DEPARTMENT
-                      </p>
-
-                      <p className="mt-1 font-bold">
-                        担当営業部
-                      </p>
-                    </Link>
-
-                    <Link
-                      href="/teams"
-                      className="rounded-2xl border border-zinc-800 p-4"
-                    >
-                      <p className="text-xs text-zinc-500">
-                        TEAMS
-                      </p>
-
-                      <p className="mt-1 font-bold">
-                        チーム確認
-                      </p>
-                    </Link>
-
-                    <Link
-                      href="/clients"
-                      className="rounded-2xl border border-zinc-800 p-4"
-                    >
-                      <p className="text-xs text-zinc-500">
-                        CLIENT SALES
-                      </p>
-
-                      <p className="mt-1 font-bold">
-                        クライアント売上
-                      </p>
-                    </Link>
-
-                    <Link
-                      href="/daily"
-                      className="rounded-2xl border border-zinc-800 p-4"
-                    >
-                      <p className="text-xs text-zinc-500">
-                        DAILY
-                      </p>
-
-                      <p className="mt-1 font-bold">
-                        日報確認
-                      </p>
-                    </Link>
-                  </>
-                )}
-
-              {storeView && (
-                <>
-                  <Link
-                    href="/teams"
-                    className="rounded-2xl border border-zinc-800 p-4"
-                  >
-                    <p className="text-xs text-zinc-500">
-                      TEAMS
-                    </p>
-
-                    <p className="mt-1 font-bold">
-                      全チーム
-                    </p>
-                  </Link>
-
-                  <Link
-                    href="/members"
-                    className="rounded-2xl border border-zinc-800 p-4"
-                  >
-                    <p className="text-xs text-zinc-500">
-                      MEMBERS
-                    </p>
-
-                    <p className="mt-1 font-bold">
-                      全メンバー
-                    </p>
-                  </Link>
-
-                  <Link
-                    href="/clients"
-                    className="rounded-2xl border border-zinc-800 p-4"
-                  >
-                    <p className="text-xs text-zinc-500">
-                      CLIENT SALES
-                    </p>
-
-                    <p className="mt-1 font-bold">
-                      クライアント売上
-                    </p>
-                  </Link>
-
-                  <Link
-                    href="/daily"
-                    className="rounded-2xl border border-zinc-800 p-4"
-                  >
-                    <p className="text-xs text-zinc-500">
-                      DAILY
-                    </p>
-
-                    <p className="mt-1 font-bold">
-                      日報管理
-                    </p>
-                  </Link>
-
-                  <Link
-                    href="/summary"
-                    className="block rounded-3xl border border-zinc-800 p-5"
-                  >
-                    <p className="text-xs text-zinc-500">
-                      MANAGEMENT
-                    </p>
-
-                    <p className="mt-2 text-xl font-bold">
-                      集約ダッシュボード
-                    </p>
-
-                    <p className="mt-2 text-sm text-zinc-500">
-                      部責・業責・社責・会長向け集約
-                    </p>
-                  </Link>
-
-                  <Link
-                    href="/settings"
-                    className="rounded-2xl border border-zinc-800 p-4"
-                  >
-                    <p className="text-xs text-zinc-500">
-                      SETTING
-                    </p>
-
-                    <p className="mt-1 font-bold">
-                      目標設定
-                    </p>
-                  </Link>
-                </>
-              )}
-            </div>
-          </section>
-        )}
-
         {errorMessage && (
           <section className="mb-4 rounded-3xl border border-red-900 p-4">
             <p className="text-sm text-red-400">
-              ERROR: {errorMessage}
+              ERROR:{" "}
+              {errorMessage}
             </p>
           </section>
         )}
 
-        {storeView && !storeGoal && (
-          <Link
-            href="/settings"
-            className="mb-4 block rounded-3xl border border-zinc-800 bg-zinc-950 p-5"
-          >
-            <p className="text-xs text-zinc-500">
-              STORE GOAL
-            </p>
-
-            <p className="mt-2 font-bold">
-              店舗目標が未設定です
-            </p>
-
-            <p className="mt-2 text-sm text-zinc-500">
-              タップして店舗目標を設定
-            </p>
-          </Link>
-        )}
-
-        {storeView ? (
-          <>
-            <GoalCard
-              label="店舗月間売上目標"
-              target={
-                storeGoal
-                  ? yen(salesTarget)
-                  : "未設定"
-              }
-              current={`現在 ${yen(
-                totals.sales
-              )}`}
-              rateValue={salesRate}
-              remaining={yen(
-                salesRemaining
-              )}
-            />
-
-            <GoalCard
-              label="オリシャン店舗目標"
-              target={
-                storeGoal
-                  ? `${champagneTarget}本`
-                  : "未設定"
-              }
-              current={`現在 ${totals.champagne}本`}
-              rateValue={
-                champagneRate
-              }
-              remaining={`${champagneRemaining}本`}
-            />
-
-            <GoalCard
-              label="来店組数店舗目標"
-              target={
-                storeGoal
-                  ? `${visitTarget}組`
-                  : "未設定"
-              }
-              current={`現在 ${totals.visits}組`}
-              rateValue={visitRate}
-              remaining={`${visitRemaining}組`}
-            />
-          </>
-        ) : (
-          <section className="mb-4 rounded-3xl border border-zinc-800 bg-zinc-950 p-5">
-            <p className="text-xs text-zinc-500">
-              MONTHLY RESULT
-            </p>
-
-            <h2 className="mt-2 text-xl font-bold">
-              {scopeLabel(
-                profile?.role
-              )}
-            </h2>
-
-            <div className="mb-4 rounded-2xl border border-zinc-800 bg-black p-4">
+        <section className="rounded-3xl border border-zinc-700 bg-zinc-950 p-5">
+          <div className="flex items-start justify-between gap-3">
+            <div>
               <p className="text-xs text-zinc-500">
-                自チーム売上目標
+                {goalLabel(
+                  profile?.role
+                )}
               </p>
 
-              <div className="mt-2 flex items-end justify-between">
-                <span className="text-2xl font-bold">
-                  {yen(salesTarget)}
-                </span>
-
-                <span className="text-sm text-zinc-400">
-                  達成率{" "}
-                  {salesTarget > 0
-                    ? Math.round(
-                        (totals.sales /
-                          salesTarget) *
-                          100
-                      )
-                    : 0}
-                  %
-                </span>
-              </div>
-
-              <div className="mt-3 h-2 overflow-hidden rounded-full bg-zinc-800">
-                <div
-                  className="h-full rounded-full bg-white"
-                  style={{
-                    width: `${
-                      salesTarget > 0
-                        ? Math.min(
-                            100,
-                            Math.round(
-                              (totals.sales /
-                                salesTarget) *
-                                100
-                            )
-                          )
-                        : 0
-                    }%`,
-                  }}
-                />
-              </div>
-
-              <div className="mt-3 flex justify-between text-sm">
-                <span className="text-zinc-400">
-                  現在{" "}
-                  {yen(
-                    totals.sales
-                  )}
-                </span>
-
-                <span className="font-bold">
-                  あと{" "}
-                  {yen(
-                    Math.max(
-                      0,
-                      salesTarget -
-                        totals.sales
+              <p className="mt-2 text-3xl font-bold">
+                {salesTarget > 0
+                  ? yen(
+                      salesTarget
                     )
-                  )}
-                </span>
+                  : "未設定"}
+              </p>
+            </div>
+
+            <div className="text-right">
+              <p className="text-xs text-zinc-500">
+                達成率
+              </p>
+
+              <p className="mt-1 text-2xl font-bold">
+                {salesTarget > 0
+                  ? `${salesRate}%`
+                  : "－"}
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-5 h-2 overflow-hidden rounded-full bg-zinc-800">
+            <div
+              className="h-full rounded-full bg-white"
+              style={{
+                width: `${progressWidth(
+                  totals.sales,
+                  salesTarget
+                )}%`,
+              }}
+            />
+          </div>
+
+          <div className="mt-4 flex items-end justify-between gap-3">
+            <div>
+              <p className="text-xs text-zinc-500">
+                現在売上
+              </p>
+
+              <p className="mt-1 text-xl font-bold">
+                {yen(
+                  totals.sales
+                )}
+              </p>
+            </div>
+
+            <div className="text-right">
+              <p className="text-xs text-zinc-500">
+                {salesTarget >
+                  0 &&
+                salesOver > 0
+                  ? "目標超過"
+                  : "残り"}
+              </p>
+
+              <p className="mt-1 text-lg font-bold">
+                {salesTarget <=
+                0
+                  ? "－"
+                  : salesOver > 0
+                    ? `+${yen(
+                        salesOver
+                      )}`
+                    : yen(
+                        salesRemaining
+                      )}
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <section className="mt-3 grid grid-cols-2 gap-3">
+          <GoalMiniBox
+            label="オリシャン"
+            current={`${totals.champagne}本`}
+            target={
+              champagneTarget >
+              0
+                ? `${champagneTarget}本`
+                : "未設定"
+            }
+            rateValue={
+              champagneRate
+            }
+          />
+
+          <GoalMiniBox
+            label="来店組数"
+            current={`${totals.visits}組`}
+            target={
+              visitTarget > 0
+                ? `${visitTarget}組`
+                : "未設定"
+            }
+            rateValue={
+              visitRate
+            }
+          />
+        </section>
+
+        {normalizedRole ===
+          "team_manager" && (
+          <section className="mt-5 rounded-3xl border border-zinc-800 bg-zinc-950 p-5">
+            <p className="text-xs text-zinc-500">
+              TEAM MUST
+            </p>
+
+            <div className="mt-2 flex items-end justify-between gap-3">
+              <div>
+                <p className="text-sm text-zinc-400">
+                  チーム必達
+                </p>
+
+                <p className="mt-1 text-2xl font-bold">
+                  {teamMustSales >
+                  0
+                    ? yen(
+                        teamMustSales
+                      )
+                    : "未設定"}
+                </p>
               </div>
+
+              <p className="text-2xl font-bold">
+                {teamMustSales >
+                0
+                  ? `${teamMustRate}%`
+                  : "－"}
+              </p>
             </div>
 
             <div className="mt-4 grid grid-cols-2 gap-3">
-              <StoreResultBox
-                label="売上"
+              <ResultBox
+                label="既存顧客売上"
                 value={yen(
-                  totals.sales
+                  teamExistingClientSales
                 )}
               />
 
-              <StoreResultBox
-                label="オリシャン"
-                value={`${totals.champagne}本`}
-              />
-
-              <StoreResultBox
-                label="来店組数"
-                value={`${totals.visits}組`}
+              <ResultBox
+                label={
+                  teamMustOver >
+                  0
+                    ? "必達超過"
+                    : "残り"
+                }
+                value={
+                  teamMustSales <=
+                  0
+                    ? "－"
+                    : teamMustOver >
+                        0
+                      ? `+${yen(
+                          teamMustOver
+                        )}`
+                      : yen(
+                          teamMustRemaining
+                        )
+                }
               />
             </div>
           </section>
         )}
 
-        <section className="rounded-3xl border border-zinc-800 bg-zinc-950 p-5">
+        <section className="mt-5 rounded-3xl border border-zinc-800 bg-zinc-950 p-5">
           <p className="text-xs text-zinc-500">
-            SALES ACTION
+            MONTHLY RESULT
           </p>
 
           <h2 className="mt-2 text-xl font-bold">
             {scopeLabel(
               profile?.role
             )}
+            営業実績
           </h2>
 
           <div className="mt-4 grid grid-cols-2 gap-3">
-            <StoreResultBox
+            <ResultBox
+              label="売上"
+              value={yen(
+                totals.sales
+              )}
+            />
+
+            <ResultBox
+              label="オリシャン"
+              value={`${totals.champagne}本`}
+            />
+
+            <ResultBox
+              label="来店組数"
+              value={`${totals.visits}組`}
+            />
+          </div>
+        </section>
+
+        <section className="mt-5 rounded-3xl border border-zinc-800 bg-zinc-950 p-5">
+          <p className="text-xs text-zinc-500">
+            SALES ACTION
+          </p>
+
+          <h2 className="mt-2 text-xl font-bold">
+            営業指標
+          </h2>
+
+          <div className="mt-4 grid grid-cols-2 gap-3">
+            <ResultBox
               label="リピート"
               value={`${totals.repeats}組`}
             />
 
-            <StoreResultBox
+            <ResultBox
               label="初回"
               value={`${totals.firstContacts}組`}
             />
 
-            <StoreResultBox
+            <ResultBox
               label="送り"
               value={`${totals.sends}件`}
             />
 
-            <StoreResultBox
+            <ResultBox
               label="場内"
               value={`${totals.inhouse}件`}
             />
           </div>
         </section>
 
-        {storeView && (
-          <Link
-            href="/settings"
-            className="mt-4 block rounded-2xl border border-zinc-800 py-4 text-center text-sm font-bold"
-          >
-            店舗目標を変更
-          </Link>
-        )}
+        <section className="mt-5">
+          <p className="text-xs tracking-[0.25em] text-zinc-500">
+            MENU
+          </p>
 
-        {profile?.department_id &&
-          profile.role ===
-            "department_manager" && (
-            <Link
-              href={`/departments/${profile.department_id}`}
-              className="mt-4 block rounded-3xl border border-zinc-800 bg-zinc-950 p-5"
-            >
-              <p className="text-xs tracking-widest text-zinc-500">
-                DEPARTMENT
-              </p>
+          <h2 className="mt-2 text-xl font-bold">
+            管理メニュー
+          </h2>
 
-              <div className="mt-2 flex items-center justify-between">
-                <div>
-                  <h2 className="text-xl font-bold">
-                    担当営業部
-                  </h2>
+          <div className="mt-4 grid grid-cols-2 gap-3">
+            {normalizedRole ===
+              "team_manager" &&
+              profile?.team_id && (
+                <>
+                  <MenuLink
+                    href={`/teams/${profile.team_id}`}
+                    label="自チーム"
+                    sub="目標・必達・ランキング"
+                  />
 
-                  <p className="mt-1 text-sm text-zinc-500">
-                    営業部目標・チーム状況を見る
-                  </p>
-                </div>
+                  <MenuLink
+                    href="/members"
+                    label="メンバー"
+                    sub="個人目標・実績"
+                  />
 
-                <span className="text-zinc-500">
-                  →
-                </span>
-              </div>
-            </Link>
-          )}
+                  <MenuLink
+                    href="/clients"
+                    label="クライアント"
+                    sub="売上・必達"
+                  />
+
+                  <MenuLink
+                    href="/daily"
+                    label="日報"
+                    sub="月間累計入力"
+                  />
+                </>
+              )}
+
+            {normalizedRole ===
+              "department_manager" && (
+                <>
+                  {resolvedDepartmentId && (
+                    <MenuLink
+                      href={`/departments/${resolvedDepartmentId}`}
+                      label="担当営業部"
+                      sub="営業部目標・実績"
+                    />
+                  )}
+
+                  <MenuLink
+                    href="/teams"
+                    label="チーム"
+                    sub="担当チーム一覧"
+                  />
+
+                  <MenuLink
+                    href="/clients"
+                    label="クライアント"
+                    sub="売上・必達"
+                  />
+
+                  <MenuLink
+                    href="/daily"
+                    label="日報"
+                    sub="月間累計確認"
+                  />
+                </>
+              )}
+
+            {storeView && (
+              <>
+                <MenuLink
+                  href="/teams"
+                  label="全チーム"
+                  sub="営業部・チーム"
+                />
+
+                <MenuLink
+                  href="/members"
+                  label="全メンバー"
+                  sub="個人目標・実績"
+                />
+
+                <MenuLink
+                  href="/clients"
+                  label="クライアント"
+                  sub="売上・必達"
+                />
+
+                <MenuLink
+                  href="/daily"
+                  label="日報"
+                  sub="月間累計管理"
+                />
+
+                <MenuLink
+                  href="/summary"
+                  label="集約"
+                  sub="管理ダッシュボード"
+                  wide
+                />
+
+                <MenuLink
+                  href="/settings"
+                  label="設定"
+                  sub="店舗目標設定"
+                  wide
+                />
+              </>
+            )}
+          </div>
+        </section>
       </div>
 
       <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-zinc-800 bg-black/95 backdrop-blur-xl pb-[env(safe-area-inset-bottom)]">
@@ -1389,9 +1492,18 @@ export default function HomePage() {
               </span>
             </Link>
           ) : (
-            <span className="py-2.5 text-center text-[10px] text-zinc-800">
-              設定
-            </span>
+            <Link
+              href="/clients"
+              className="py-2.5 text-center text-[10px] text-zinc-600"
+            >
+              <span className="block text-lg leading-none">
+                ◎
+              </span>
+
+              <span className="mt-1 block">
+                顧客
+              </span>
+            </Link>
           )}
         </div>
       </nav>
@@ -1399,60 +1511,43 @@ export default function HomePage() {
   );
 }
 
-function GoalCard({
+function GoalMiniBox({
   label,
-  target,
   current,
+  target,
   rateValue,
-  remaining,
 }: {
   label: string;
-  target: string;
   current: string;
+  target: string;
   rateValue: number;
-  remaining: string;
 }) {
   return (
-    <section className="mb-4 rounded-3xl border border-zinc-800 bg-zinc-950 p-5">
+    <div className="rounded-3xl border border-zinc-800 bg-zinc-950 p-4">
       <p className="text-xs text-zinc-500">
         {label}
       </p>
 
-      <p className="mt-2 text-3xl font-bold">
-        {target}
+      <p className="mt-2 text-2xl font-bold">
+        {current}
       </p>
 
-      <div className="mt-5 h-2 overflow-hidden rounded-full bg-zinc-800">
-        <div
-          className="h-full rounded-full bg-white"
-          style={{
-            width: `${rateValue}%`,
-          }}
-        />
-      </div>
+      <p className="mt-2 text-xs text-zinc-500">
+        目標 {target}
+      </p>
 
-      <div className="mt-3 flex justify-between text-xs text-zinc-500">
-        <span>{current}</span>
-
-        <span>
-          達成率 {rateValue}%
-        </span>
-      </div>
-
-      <div className="mt-4 rounded-2xl bg-zinc-900 p-4">
-        <p className="text-xs text-zinc-500">
-          残り
-        </p>
-
-        <p className="mt-1 text-xl font-bold">
-          {remaining}
-        </p>
-      </div>
-    </section>
+      <p className="mt-1 text-xs text-zinc-500">
+        達成率{" "}
+        {target ===
+        "未設定"
+          ? "－"
+          : `${rateValue}%`}
+      </p>
+    </div>
   );
 }
 
-function StoreResultBox({
+function ResultBox({
   label,
   value,
 }: {
@@ -1465,9 +1560,40 @@ function StoreResultBox({
         {label}
       </p>
 
-      <p className="mt-1 text-xl font-bold">
+      <p className="mt-1 break-words text-xl font-bold">
         {value}
       </p>
     </div>
+  );
+}
+
+function MenuLink({
+  href,
+  label,
+  sub,
+  wide = false,
+}: {
+  href: string;
+  label: string;
+  sub: string;
+  wide?: boolean;
+}) {
+  return (
+    <Link
+      href={href}
+      className={`${
+        wide
+          ? "col-span-2"
+          : ""
+      } rounded-2xl border border-zinc-800 bg-zinc-950 p-4`}
+    >
+      <p className="font-bold">
+        {label}
+      </p>
+
+      <p className="mt-1 text-xs text-zinc-500">
+        {sub} →
+      </p>
+    </Link>
   );
 }
