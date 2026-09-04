@@ -18,13 +18,10 @@ type DailyInput = {
   sales: string;
   champagne_count: string;
   visit_count: string;
-  existing_visit_count: string;
   repeat_count: string;
   first_contact_count: string;
   send_count: string;
   inhouse_count: string;
-  contact_acquired_count: string;
-  repeat_plan_count: string;
   note: string;
 };
 
@@ -44,13 +41,10 @@ function emptyRow(member: Member): DailyInput {
     sales: "",
     champagne_count: "",
     visit_count: "",
-    existing_visit_count: "",
     repeat_count: "",
     first_contact_count: "",
     send_count: "",
     inhouse_count: "",
-    contact_acquired_count: "",
-    repeat_plan_count: "",
     note: "",
   };
 }
@@ -107,23 +101,6 @@ export default function DailyPage() {
         new URLSearchParams(window.location.search).get("team");
 
       setRole(profile?.role ?? "");
-      let currentDepartmentId: string | null = null;
-
-      if (currentTeamId) {
-        const { data: ownTeam, error: ownTeamError } = await supabase
-          .from("teams")
-          .select("department_id")
-          .eq("id", currentTeamId)
-          .maybeSingle();
-
-        if (ownTeamError) {
-          setMessage("ERROR: " + ownTeamError.message);
-          setLoading(false);
-          return;
-        }
-
-        currentDepartmentId = ownTeam?.department_id ?? null;
-      }
 
       let memberQuery = supabase
         .from("members")
@@ -172,6 +149,7 @@ export default function DailyPage() {
       }
 
       const memberList = (data ?? []) as Member[];
+
       setMembers(memberList);
 
       const initial: Record<string, DailyInput> = {};
@@ -205,13 +183,10 @@ export default function DailyPage() {
           sales,
           champagne_count,
           visit_count,
-          existing_visit_count,
           repeat_count,
           first_contact_count,
           send_count,
           inhouse_count,
-          contact_acquired_count,
-          repeat_plan_count,
           note
         `)
         .gte("business_date", monthStart)
@@ -239,50 +214,46 @@ export default function DailyPage() {
           existing.add(id);
         }
 
-        const row = next[id] ?? emptyRow(
-          members.find((m) => m.id === id)!
-        );
+        const member = members.find((m) => m.id === id);
+
+        if (!member) return;
+
+        const row = next[id] ?? emptyRow(member);
 
         row.team_id = item.team_id ?? row.team_id;
 
         row.sales = String(
           Number(row.sales || 0) + Number(item.sales ?? 0)
         );
+
         row.champagne_count = String(
           Number(row.champagne_count || 0) +
-          Number(item.champagne_count ?? 0)
+            Number(item.champagne_count ?? 0)
         );
+
         row.visit_count = String(
           Number(row.visit_count || 0) +
-          Number(item.visit_count ?? 0)
+            Number(item.visit_count ?? 0)
         );
-        row.existing_visit_count = String(
-          Number(row.existing_visit_count || 0) +
-          Number(item.existing_visit_count ?? 0)
-        );
+
         row.repeat_count = String(
           Number(row.repeat_count || 0) +
-          Number(item.repeat_count ?? 0)
+            Number(item.repeat_count ?? 0)
         );
+
         row.first_contact_count = String(
           Number(row.first_contact_count || 0) +
-          Number(item.first_contact_count ?? 0)
+            Number(item.first_contact_count ?? 0)
         );
+
         row.send_count = String(
           Number(row.send_count || 0) +
-          Number(item.send_count ?? 0)
+            Number(item.send_count ?? 0)
         );
+
         row.inhouse_count = String(
           Number(row.inhouse_count || 0) +
-          Number(item.inhouse_count ?? 0)
-        );
-        row.contact_acquired_count = String(
-          Number(row.contact_acquired_count || 0) +
-          Number(item.contact_acquired_count ?? 0)
-        );
-        row.repeat_plan_count = String(
-          Number(row.repeat_plan_count || 0) +
-          Number(item.repeat_plan_count ?? 0)
+            Number(item.inhouse_count ?? 0)
         );
 
         if (item.business_date === businessDate) {
@@ -318,17 +289,13 @@ export default function DailyPage() {
       row.sales !== "" ||
       row.champagne_count !== "" ||
       row.visit_count !== "" ||
-      row.existing_visit_count !== "" ||
       row.repeat_count !== "" ||
       row.first_contact_count !== "" ||
       row.send_count !== "" ||
       row.inhouse_count !== "" ||
-      row.contact_acquired_count !== "" ||
-      row.repeat_plan_count !== "" ||
       row.note.trim() !== ""
     );
   }
-
 
   async function resetCurrentDay() {
     if (!canEdit) return;
@@ -336,6 +303,7 @@ export default function DailyPage() {
     const ok = window.confirm(
       `${businessDate} の日報データを削除します。\n本当に削除しますか？`
     );
+
     if (!ok) return;
 
     setSaving(true);
@@ -356,6 +324,7 @@ export default function DailyPage() {
     }
 
     const next: Record<string, DailyInput> = {};
+
     members.forEach((member) => {
       next[member.id] = emptyRow(member);
     });
@@ -376,16 +345,20 @@ export default function DailyPage() {
     const next = new Date(year, month, 1);
 
     const nextMonth =
-      `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}-01`;
+      `${next.getFullYear()}-${String(
+        next.getMonth() + 1
+      ).padStart(2, "0")}-01`;
 
     const ok = window.confirm(
       `${yearMonth} の表示対象メンバーの実績を全削除します。\n本当に削除しますか？`
     );
+
     if (!ok) return;
 
     const finalOk = window.confirm(
       "最終確認です。\nこの操作は元に戻せません。削除しますか？"
     );
+
     if (!finalOk) return;
 
     setSaving(true);
@@ -407,6 +380,7 @@ export default function DailyPage() {
     }
 
     const nextRows: Record<string, DailyInput> = {};
+
     members.forEach((member) => {
       nextRows[member.id] = emptyRow(member);
     });
@@ -446,13 +420,10 @@ export default function DailyPage() {
         sales,
         champagne_count,
         visit_count,
-        existing_visit_count,
         repeat_count,
         first_contact_count,
         send_count,
-        inhouse_count,
-        contact_acquired_count,
-        repeat_plan_count
+        inhouse_count
       `)
       .gte("business_date", monthStart)
       .lt("business_date", businessDate)
@@ -464,18 +435,18 @@ export default function DailyPage() {
       return;
     }
 
-    const previous: Record<string, {
-      sales: number;
-      champagne_count: number;
-      visit_count: number;
-      existing_visit_count: number;
-      repeat_count: number;
-      first_contact_count: number;
-      send_count: number;
-      inhouse_count: number;
-      contact_acquired_count: number;
-      repeat_plan_count: number;
-    }> = {};
+    const previous: Record<
+      string,
+      {
+        sales: number;
+        champagne_count: number;
+        visit_count: number;
+        repeat_count: number;
+        first_contact_count: number;
+        send_count: number;
+        inhouse_count: number;
+      }
+    > = {};
 
     for (const item of previousData ?? []) {
       const id = item.member_id;
@@ -485,47 +456,93 @@ export default function DailyPage() {
           sales: 0,
           champagne_count: 0,
           visit_count: 0,
-          existing_visit_count: 0,
           repeat_count: 0,
           first_contact_count: 0,
           send_count: 0,
           inhouse_count: 0,
-          contact_acquired_count: 0,
-          repeat_plan_count: 0,
         };
       }
 
       previous[id].sales += Number(item.sales ?? 0);
-      previous[id].champagne_count += Number(item.champagne_count ?? 0);
-      previous[id].visit_count += Number(item.visit_count ?? 0);
-      previous[id].existing_visit_count += Number(item.existing_visit_count ?? 0);
-      previous[id].repeat_count += Number(item.repeat_count ?? 0);
-      previous[id].first_contact_count += Number(item.first_contact_count ?? 0);
-      previous[id].send_count += Number(item.send_count ?? 0);
-      previous[id].inhouse_count += Number(item.inhouse_count ?? 0);
-      previous[id].contact_acquired_count += Number(item.contact_acquired_count ?? 0);
-      previous[id].repeat_plan_count += Number(item.repeat_plan_count ?? 0);
+
+      previous[id].champagne_count += Number(
+        item.champagne_count ?? 0
+      );
+
+      previous[id].visit_count += Number(
+        item.visit_count ?? 0
+      );
+
+      previous[id].repeat_count += Number(
+        item.repeat_count ?? 0
+      );
+
+      previous[id].first_contact_count += Number(
+        item.first_contact_count ?? 0
+      );
+
+      previous[id].send_count += Number(
+        item.send_count ?? 0
+      );
+
+      previous[id].inhouse_count += Number(
+        item.inhouse_count ?? 0
+      );
     }
 
-    const payload = targets.map((row) => ({
-      member_id: row.member_id,
-      team_id: row.team_id,
-      business_date: businessDate,
+    const payload = targets.map((row) => {
+      const prev = previous[row.member_id];
 
-      sales: Number(row.sales || 0) - (previous[row.member_id]?.sales ?? 0),
-      champagne_count: Number(row.champagne_count || 0) - (previous[row.member_id]?.champagne_count ?? 0),
-      visit_count: Number(row.visit_count || 0) - (previous[row.member_id]?.visit_count ?? 0),
-      existing_visit_count: Number(row.existing_visit_count || 0) - (previous[row.member_id]?.existing_visit_count ?? 0),
+      const sales =
+        Number(row.sales || 0) -
+        (prev?.sales ?? 0);
 
-      repeat_count: Number(row.repeat_count || 0) - (previous[row.member_id]?.repeat_count ?? 0),
-      first_contact_count: Number(row.first_contact_count || 0) - (previous[row.member_id]?.first_contact_count ?? 0),
-      send_count: Number(row.send_count || 0) - (previous[row.member_id]?.send_count ?? 0),
-      inhouse_count: Number(row.inhouse_count || 0) - (previous[row.member_id]?.inhouse_count ?? 0),
-      contact_acquired_count: Number(row.contact_acquired_count || 0) - (previous[row.member_id]?.contact_acquired_count ?? 0),
-      repeat_plan_count: Number(row.repeat_plan_count || 0) - (previous[row.member_id]?.repeat_plan_count ?? 0),
+      const champagne =
+        Number(row.champagne_count || 0) -
+        (prev?.champagne_count ?? 0);
 
-      note: row.note.trim() || null,
-    }));
+      const visits =
+        Number(row.visit_count || 0) -
+        (prev?.visit_count ?? 0);
+
+      const repeats =
+        Number(row.repeat_count || 0) -
+        (prev?.repeat_count ?? 0);
+
+      const firstContacts =
+        Number(row.first_contact_count || 0) -
+        (prev?.first_contact_count ?? 0);
+
+      const sends =
+        Number(row.send_count || 0) -
+        (prev?.send_count ?? 0);
+
+      const inhouse =
+        Number(row.inhouse_count || 0) -
+        (prev?.inhouse_count ?? 0);
+
+      const existingVisits = Math.max(
+        0,
+        visits - repeats
+      );
+
+      return {
+        member_id: row.member_id,
+        team_id: row.team_id,
+        business_date: businessDate,
+
+        sales,
+        champagne_count: champagne,
+        visit_count: visits,
+        existing_visit_count: existingVisits,
+        repeat_count: repeats,
+        first_contact_count: firstContacts,
+        send_count: sends,
+        inhouse_count: inhouse,
+
+        note: row.note.trim() || null,
+      };
+    });
 
     const { error } = await supabase
       .from("daily_results")
@@ -546,14 +563,20 @@ export default function DailyPage() {
       ])
     );
 
-    setMessage(`${targets.length}名分の月間累計を保存しました`);
+    setMessage(
+      `${targets.length}名分の月間累計を保存しました`
+    );
+
     setSaving(false);
 
     const returnTeamId =
-      new URLSearchParams(window.location.search).get("team");
+      new URLSearchParams(
+        window.location.search
+      ).get("team");
 
     if (returnTeamId) {
-      window.location.href = `/teams/${returnTeamId}`;
+      window.location.href =
+        `/teams/${returnTeamId}`;
     }
   }
 
@@ -611,7 +634,10 @@ export default function DailyPage() {
           SWAMP-FOG
         </p>
 
-        <h1 className="mt-2 text-3xl font-bold">月間累計入力</h1>
+        <h1 className="mt-2 text-3xl font-bold">
+          月間累計入力
+        </h1>
+
         <p className="mt-1 text-sm text-zinc-500">
           DAILY RESULT
         </p>
@@ -626,11 +652,16 @@ export default function DailyPage() {
 
                 <select
                   value={selectedTeamId}
-                  onChange={(e) => setSelectedTeamId(e.target.value)}
+                  onChange={(e) =>
+                    setSelectedTeamId(e.target.value)
+                  }
                   className="mt-2 w-full rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-4 text-white"
                 >
                   {teamOptions.map((team) => (
-                    <option key={team.id} value={team.id}>
+                    <option
+                      key={team.id}
+                      value={team.id}
+                    >
                       {team.name}
                     </option>
                   ))}
@@ -648,7 +679,9 @@ export default function DailyPage() {
             <input
               type="date"
               value={businessDate}
-              onChange={(e) => setBusinessDate(e.target.value)}
+              onChange={(e) =>
+                setBusinessDate(e.target.value)
+              }
               className="mt-2 w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-4 text-white"
             />
           </label>
@@ -664,12 +697,6 @@ export default function DailyPage() {
           </div>
         </section>
 
-        {!canEdit && (
-          <div className="mt-4 rounded-2xl border border-zinc-800 p-4 text-sm text-zinc-400">
-            キャストアカウントは日報の閲覧のみ可能です。
-          </div>
-        )}
-
         <div className="mt-5 space-y-4">
           {[...members]
             .sort((a, b) => {
@@ -678,11 +705,13 @@ export default function DailyPage() {
 
               const activeA =
                 !!rowA &&
-                (hasInput(rowA) || existingIds.has(a.id));
+                (hasInput(rowA) ||
+                  existingIds.has(a.id));
 
               const activeB =
                 !!rowB &&
-                (hasInput(rowB) || existingIds.has(b.id));
+                (hasInput(rowB) ||
+                  existingIds.has(b.id));
 
               if (activeA && !activeB) return -1;
               if (!activeA && activeB) return 1;
@@ -690,181 +719,185 @@ export default function DailyPage() {
               return 0;
             })
             .map((member) => {
-            const row = rows[member.id];
+              const row = rows[member.id];
 
-            if (!row) return null;
+              if (!row) return null;
 
-            const completed = existingIds.has(member.id);
+              const completed =
+                existingIds.has(member.id);
 
-            return (
-              <section
-                key={member.id}
-                className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4"
-              >
-                <div className="mb-4 flex items-center justify-between">
-                  <div>
-                    <p className="text-lg font-bold">
-                      {member.name}
-                    </p>
+              const existingVisits =
+                Math.max(
+                  0,
+                  Number(row.visit_count || 0) -
+                    Number(row.repeat_count || 0)
+                );
 
-                    <p className="mt-1 text-xs text-zinc-500">
-                      {completed ? "入力済み" : "未入力"}
-                    </p>
+              return (
+                <section
+                  key={member.id}
+                  className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4"
+                >
+                  <div className="mb-4 flex items-center justify-between">
+                    <div>
+                      <p className="text-lg font-bold">
+                        {member.name}
+                      </p>
+
+                      <p className="mt-1 text-xs text-zinc-500">
+                        {completed
+                          ? "入力済み"
+                          : "未入力"}
+                      </p>
+                    </div>
+
+                    <span
+                      className={`rounded-full border px-3 py-1 text-xs ${
+                        completed
+                          ? "border-zinc-600 text-white"
+                          : "border-zinc-800 text-zinc-500"
+                      }`}
+                    >
+                      {completed ? "済" : "未"}
+                    </span>
                   </div>
 
-                  <span
-                    className={`rounded-full border px-3 py-1 text-xs ${
-                      completed
-                        ? "border-zinc-600 text-white"
-                        : "border-zinc-800 text-zinc-500"
-                    }`}
-                  >
-                    {completed ? "済" : "未"}
-                  </span>
-                </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Field
+                      label="売上"
+                      value={row.sales}
+                      disabled={!canEdit}
+                      onChange={(v) =>
+                        change(
+                          member.id,
+                          "sales",
+                          v
+                        )
+                      }
+                    />
 
-                <div className="grid grid-cols-2 gap-3">
-                  <Field
-                    label="売上"
-                    value={row.sales}
-                    disabled={!canEdit}
-                    onChange={(v) =>
-                      change(member.id, "sales", v)
-                    }
-                  />
+                    <Field
+                      label="オリシャン"
+                      value={row.champagne_count}
+                      disabled={!canEdit}
+                      onChange={(v) =>
+                        change(
+                          member.id,
+                          "champagne_count",
+                          v
+                        )
+                      }
+                    />
 
-                  <Field
-                    label="オリシャン"
-                    value={row.champagne_count}
-                    disabled={!canEdit}
-                    onChange={(v) =>
-                      change(
-                        member.id,
-                        "champagne_count",
-                        v
-                      )
-                    }
-                  />
+                    <Field
+                      label="来店組数"
+                      value={row.visit_count}
+                      disabled={!canEdit}
+                      onChange={(v) =>
+                        change(
+                          member.id,
+                          "visit_count",
+                          v
+                        )
+                      }
+                    />
 
-                  <Field
-                    label="来店組数"
-                    value={row.visit_count}
-                    disabled={!canEdit}
-                    onChange={(v) =>
-                      change(member.id, "visit_count", v)
-                    }
-                  />
+                    <div className="block">
+                      <span className="text-xs text-zinc-500">
+                        既存来店
+                      </span>
 
-                  <Field
-                    label="既存来店"
-                    value={row.existing_visit_count}
-                    disabled={!canEdit}
-                    onChange={(v) =>
-                      change(
-                        member.id,
-                        "existing_visit_count",
-                        v
-                      )
-                    }
-                  />
-
-                  <Field
-                    label="リピート"
-                    value={row.repeat_count}
-                    disabled={!canEdit}
-                    onChange={(v) =>
-                      change(member.id, "repeat_count", v)
-                    }
-                  />
-
-                  <details className="col-span-2 rounded-xl border border-zinc-800 px-3 py-2">
-                    <summary className="cursor-pointer text-sm font-bold text-zinc-300">
-                      営業行動の詳細
-                    </summary>
-                    <div className="mt-3 grid grid-cols-2 gap-3">
-                  <Field
-                    label="初回"
-                    value={row.first_contact_count}
-                    disabled={!canEdit}
-                    onChange={(v) =>
-                      change(
-                        member.id,
-                        "first_contact_count",
-                        v
-                      )
-                    }
-                  />
-
-                  <Field
-                    label="送り"
-                    value={row.send_count}
-                    disabled={!canEdit}
-                    onChange={(v) =>
-                      change(member.id, "send_count", v)
-                    }
-                  />
-
-                  <Field
-                    label="場内"
-                    value={row.inhouse_count}
-                    disabled={!canEdit}
-                    onChange={(v) =>
-                      change(member.id, "inhouse_count", v)
-                    }
-                  />
-
-                  <Field
-                    label="連絡先取得"
-                    value={row.contact_acquired_count}
-                    disabled={!canEdit}
-                    onChange={(v) =>
-                      change(
-                        member.id,
-                        "contact_acquired_count",
-                        v
-                      )
-                    }
-                  />
-
-                  <Field
-                    label="リピート予定"
-                    value={row.repeat_plan_count}
-                    disabled={!canEdit}
-                    onChange={(v) =>
-                      change(
-                        member.id,
-                        "repeat_plan_count",
-                        v
-                      )
-                    }
-                  />
+                      <div className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-900 px-3 py-2.5 text-white">
+                        {existingVisits}
+                      </div>
                     </div>
-                  </details>
-                </div>
 
-                <label className="mt-3 block">
-                  <span className="text-xs text-zinc-500">
-                    メモ
-                  </span>
+                    <Field
+                      label="リピート"
+                      value={row.repeat_count}
+                      disabled={!canEdit}
+                      onChange={(v) =>
+                        change(
+                          member.id,
+                          "repeat_count",
+                          v
+                        )
+                      }
+                    />
 
-                  <textarea
-                    value={row.note}
-                    disabled={!canEdit}
-                    onChange={(e) =>
-                      change(
-                        member.id,
-                        "note",
-                        e.target.value
-                      )
-                    }
-                    rows={1}
-                    className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-black px-3 py-2.5 text-sm text-white disabled:opacity-60"
-                    placeholder="必要な場合のみ入力"
-                  />
-                </label>
-              </section>
-            );
-          })}
+                    <details className="col-span-2 rounded-xl border border-zinc-800 px-3 py-2">
+                      <summary className="cursor-pointer text-sm font-bold text-zinc-300">
+                        営業行動の詳細
+                      </summary>
+
+                      <div className="mt-3 grid grid-cols-2 gap-3">
+                        <Field
+                          label="初回"
+                          value={
+                            row.first_contact_count
+                          }
+                          disabled={!canEdit}
+                          onChange={(v) =>
+                            change(
+                              member.id,
+                              "first_contact_count",
+                              v
+                            )
+                          }
+                        />
+
+                        <Field
+                          label="送り"
+                          value={row.send_count}
+                          disabled={!canEdit}
+                          onChange={(v) =>
+                            change(
+                              member.id,
+                              "send_count",
+                              v
+                            )
+                          }
+                        />
+
+                        <Field
+                          label="場内"
+                          value={row.inhouse_count}
+                          disabled={!canEdit}
+                          onChange={(v) =>
+                            change(
+                              member.id,
+                              "inhouse_count",
+                              v
+                            )
+                          }
+                        />
+                      </div>
+                    </details>
+                  </div>
+
+                  <label className="mt-3 block">
+                    <span className="text-xs text-zinc-500">
+                      メモ
+                    </span>
+
+                    <textarea
+                      value={row.note}
+                      disabled={!canEdit}
+                      onChange={(e) =>
+                        change(
+                          member.id,
+                          "note",
+                          e.target.value
+                        )
+                      }
+                      rows={1}
+                      className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-black px-3 py-2.5 text-sm text-white disabled:opacity-60"
+                      placeholder="必要な場合のみ入力"
+                    />
+                  </label>
+                </section>
+              );
+            })}
         </div>
 
         {canEdit && (
@@ -922,32 +955,48 @@ export default function DailyPage() {
             href="/"
             className="py-2.5 text-center text-[10px] text-zinc-600"
           >
-            <span className="block text-lg leading-none">⌂</span>
-            <span className="mt-1 block">ホーム</span>
+            <span className="block text-lg leading-none">
+              ⌂
+            </span>
+            <span className="mt-1 block">
+              ホーム
+            </span>
           </Link>
 
           <Link
             href="/members"
             className="py-2.5 text-center text-[10px] text-zinc-600"
           >
-            <span className="block text-lg leading-none">♙</span>
-            <span className="mt-1 block">メンバー</span>
+            <span className="block text-lg leading-none">
+              ♙
+            </span>
+            <span className="mt-1 block">
+              メンバー
+            </span>
           </Link>
 
           <Link
             href="/daily"
             className="py-2.5 text-center text-[10px] font-bold text-white"
           >
-            <span className="block text-lg leading-none">✎</span>
-            <span className="mt-1 block">日報</span>
+            <span className="block text-lg leading-none">
+              ✎
+            </span>
+            <span className="mt-1 block">
+              日報
+            </span>
           </Link>
 
           <Link
             href="/settings"
             className="py-2.5 text-center text-[10px] text-zinc-600"
           >
-            <span className="block text-lg leading-none">⚙</span>
-            <span className="mt-1 block">設定</span>
+            <span className="block text-lg leading-none">
+              ⚙
+            </span>
+            <span className="mt-1 block">
+              設定
+            </span>
           </Link>
         </div>
       </nav>
@@ -978,8 +1027,12 @@ function Field({
         min="0"
         value={value}
         disabled={disabled}
-        onFocus={(e) => e.currentTarget.select()}
-        onChange={(e) => onChange(e.target.value)}
+        onFocus={(e) =>
+          e.currentTarget.select()
+        }
+        onChange={(e) =>
+          onChange(e.target.value)
+        }
         placeholder="0"
         className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-black px-3 py-2.5 text-white disabled:opacity-60"
       />
