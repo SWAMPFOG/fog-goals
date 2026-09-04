@@ -6,17 +6,8 @@ import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
 import { canEditTeamGoal, normalizeRole } from "@/utils/permissions";
 
-type Team = {
-  id: string;
-  name: string;
-  department_id: string | null;
-};
-
-type Member = {
-  id: string;
-  name: string;
-  display_order: number;
-};
+type Team = { id: string; name: string; department_id: string | null };
+type Member = { id: string; name: string; display_order: number };
 
 type DailyResult = {
   member_id: string;
@@ -62,11 +53,42 @@ type TeamSummary = {
   my_sales: number;
 };
 
+type TeamMustProgress = {
+  team_must_sales: number;
+  team_existing_client_sales: number;
+  team_must_rate: number;
+  team_must_remaining: number;
+};
+
 type TeamGoal = {
   id: string;
   target_sales: number;
   champagne_target: number;
   visit_count_target: number;
+};
+
+type MemberGoal = {
+  member_id: string;
+  must_sales: number | null;
+  target_sales: number | null;
+  champagne_target: number | null;
+  visit_count_target: number | null;
+};
+
+type MemberStat = {
+  id: string;
+  name: string;
+  salesRank: number;
+  clientCountRank: number;
+  sales: number;
+  champagne: number;
+  visits: number;
+  clientCount: number;
+  sends: number;
+  inhouse: number;
+  repeats: number;
+  inhouseRate: number;
+  repeatRate: number;
 };
 
 function currentMonth() {
@@ -78,16 +100,22 @@ function currentMonth() {
 }
 
 function yen(value: number) {
-  return `¥${value.toLocaleString("ja-JP")}`;
+  return `¥${Number(value || 0).toLocaleString("ja-JP")}`;
 }
 
-function rate(current: number, target: number) {
+function cappedRate(current: number, target: number) {
   if (target <= 0) return 0;
 
   return Math.min(
     100,
     Math.round((current / target) * 100)
   );
+}
+
+function rawRate(current: number, target: number) {
+  if (target <= 0) return 0;
+
+  return Math.round((current / target) * 1000) / 10;
 }
 
 export default function TeamDetailPage() {
@@ -98,13 +126,24 @@ export default function TeamDetailPage() {
   const [supabase] = useState(() => createClient());
 
   const [team, setTeam] = useState<Team | null>(null);
-  const [teamName, setTeamName] = useState("");
-  const [editingTeamName, setEditingTeamName] =
-    useState(false);
-  const [savingTeamName, setSavingTeamName] =
-    useState(false);
-  const [teamNameMessage, setTeamNameMessage] =
+
+  const [teamName, setTeamName] =
     useState("");
+
+  const [
+    editingTeamName,
+    setEditingTeamName,
+  ] = useState(false);
+
+  const [
+    savingTeamName,
+    setSavingTeamName,
+  ] = useState(false);
+
+  const [
+    teamNameMessage,
+    setTeamNameMessage,
+  ] = useState("");
 
   const [members, setMembers] =
     useState<Member[]>([]);
@@ -112,38 +151,51 @@ export default function TeamDetailPage() {
   const [results, setResults] =
     useState<DailyResult[]>([]);
 
-  const [rankingRows, setRankingRows] =
-    useState<TeamRankingRow[]>([]);
+  const [
+    rankingRows,
+    setRankingRows,
+  ] = useState<TeamRankingRow[]>([]);
 
-  const [clientCountRows, setClientCountRows] =
-    useState<ClientCountRankingRow[]>([]);
+  const [
+    clientCountRows,
+    setClientCountRows,
+  ] = useState<ClientCountRankingRow[]>([]);
 
-  const [teamSummary, setTeamSummary] =
-    useState<TeamSummary | null>(null);
+  const [
+    teamSummary,
+    setTeamSummary,
+  ] = useState<TeamSummary | null>(null);
+
+  const [
+    teamMustProgress,
+    setTeamMustProgress,
+  ] = useState<TeamMustProgress | null>(null);
 
   const [goal, setGoal] =
     useState<TeamGoal | null>(null);
 
-  const [memberGoals, setMemberGoals] = useState<
-    {
-      member_id: string;
-      target_sales: number | null;
-      champagne_target: number | null;
-      visit_count_target: number | null;
-    }[]
-  >([]);
+  const [
+    memberGoals,
+    setMemberGoals,
+  ] = useState<MemberGoal[]>([]);
 
   const [month, setMonth] =
     useState(currentMonth());
 
-  const [targetSales, setTargetSales] =
-    useState("");
+  const [
+    targetSales,
+    setTargetSales,
+  ] = useState("");
 
-  const [champagneTarget, setChampagneTarget] =
-    useState("");
+  const [
+    champagneTarget,
+    setChampagneTarget,
+  ] = useState("");
 
-  const [visitTarget, setVisitTarget] =
-    useState("");
+  const [
+    visitTarget,
+    setVisitTarget,
+  ] = useState("");
 
   const [editing, setEditing] =
     useState(false);
@@ -157,25 +209,28 @@ export default function TeamDetailPage() {
   const [message, setMessage] =
     useState("");
 
-  const [errorMessage, setErrorMessage] =
-    useState("");
+  const [
+    errorMessage,
+    setErrorMessage,
+  ] = useState("");
 
   const [role, setRole] =
     useState<string | null>(null);
 
-  const [profileMemberId, setProfileMemberId] =
-    useState<string | null>(null);
-
-  const [profileTeamId, setProfileTeamId] =
-    useState<string | null>(null);
+  const [
+    profileTeamId,
+    setProfileTeamId,
+  ] = useState<string | null>(null);
 
   const [
     profileDepartmentId,
     setProfileDepartmentId,
   ] = useState<string | null>(null);
 
-  const [accessDenied, setAccessDenied] =
-    useState(false);
+  const [
+    accessDenied,
+    setAccessDenied,
+  ] = useState(false);
 
   const [rankTab, setRankTab] =
     useState("sales");
@@ -184,6 +239,7 @@ export default function TeamDetailPage() {
     async function load() {
       setLoading(true);
       setErrorMessage("");
+      setMessage("");
 
       const {
         data: { user },
@@ -214,12 +270,13 @@ export default function TeamDetailPage() {
         return;
       }
 
+      const normalizedRole =
+        normalizeRole(
+          profileData?.role ?? null
+        );
+
       setRole(
         profileData?.role ?? null
-      );
-
-      setProfileMemberId(
-        profileData?.member_id ?? null
       );
 
       setProfileTeamId(
@@ -265,9 +322,7 @@ export default function TeamDetailPage() {
         `${month}-01`;
 
       const [year, monthNumber] =
-        month
-          .split("-")
-          .map(Number);
+        month.split("-").map(Number);
 
       const nextDate =
         new Date(
@@ -286,6 +341,7 @@ export default function TeamDetailPage() {
         membersResult,
         dailyResult,
         goalResult,
+        memberGoalResult,
       ] = await Promise.all([
         supabase
           .from("teams")
@@ -301,16 +357,29 @@ export default function TeamDetailPage() {
           .select(
             "id, name, display_order"
           )
-          .eq("team_id", teamId)
-          .eq("is_active", true)
-          .order("display_order"),
+          .eq(
+            "team_id",
+            teamId
+          )
+          .eq(
+            "is_active",
+            true
+          )
+          .order(
+            "display_order"
+          ),
 
         supabase
-          .from("daily_results")
+          .from(
+            "daily_results"
+          )
           .select(
             "member_id, sales, champagne_count, visit_count, repeat_count, first_contact_count, send_count, inhouse_count"
           )
-          .eq("team_id", teamId)
+          .eq(
+            "team_id",
+            teamId
+          )
           .gte(
             "business_date",
             targetMonth
@@ -321,59 +390,54 @@ export default function TeamDetailPage() {
           ),
 
         supabase
-          .from("team_goals")
+          .from(
+            "team_goals"
+          )
           .select(
             "id, target_sales, champagne_target, visit_count_target"
           )
-          .eq("team_id", teamId)
+          .eq(
+            "team_id",
+            teamId
+          )
           .eq(
             "target_month",
             targetMonth
           )
           .maybeSingle(),
+
+        supabase
+          .from(
+            "monthly_goals"
+          )
+          .select(
+            "member_id, must_sales, target_sales, champagne_target, visit_count_target"
+          )
+          .eq(
+            "team_id",
+            teamId
+          )
+          .eq(
+            "target_month",
+            targetMonth
+          ),
       ]);
 
-      if (teamResult.error) {
+      const firstError =
+        teamResult.error ||
+        membersResult.error ||
+        dailyResult.error ||
+        goalResult.error ||
+        memberGoalResult.error;
+
+      if (firstError) {
         setErrorMessage(
-          teamResult.error.message
+          firstError.message
         );
 
         setLoading(false);
         return;
       }
-
-      if (membersResult.error) {
-        setErrorMessage(
-          membersResult.error.message
-        );
-
-        setLoading(false);
-        return;
-      }
-
-      if (dailyResult.error) {
-        setErrorMessage(
-          dailyResult.error.message
-        );
-
-        setLoading(false);
-        return;
-      }
-
-      if (goalResult.error) {
-        setErrorMessage(
-          goalResult.error.message
-        );
-
-        setLoading(false);
-        return;
-      }
-
-      const normalizedRole =
-        normalizeRole(
-          profileData?.role ??
-            null
-        );
 
       let canViewThisTeam =
         true;
@@ -391,292 +455,17 @@ export default function TeamDetailPage() {
         normalizedRole ===
         "department_manager"
       ) {
-        if (
-          !profileData?.team_id
-        ) {
-          canViewThisTeam =
-            false;
-        } else {
-          const {
-            data: ownTeam,
-            error: ownTeamError,
-          } = await supabase
-            .from("teams")
-            .select(
-              "department_id"
-            )
-            .eq(
-              "id",
-              profileData.team_id
-            )
-            .maybeSingle();
-
-          if (ownTeamError) {
-            setErrorMessage(
-              ownTeamError.message
-            );
-
-            setLoading(false);
-            return;
-          }
-
-          canViewThisTeam =
-            !!ownTeam?.department_id &&
-            ownTeam.department_id ===
-              teamResult.data
-                .department_id;
-        }
+        canViewThisTeam =
+          !!ownDepartmentId &&
+          ownDepartmentId ===
+            teamResult.data
+              .department_id;
       }
 
       if (!canViewThisTeam) {
         setAccessDenied(true);
         setLoading(false);
         return;
-      }
-
-      if (
-        normalizedRole ===
-        "member"
-      ) {
-        const [
-          {
-            data: rankingData,
-            error: rankingError,
-          },
-          {
-            data: summaryData,
-            error: summaryError,
-          },
-          {
-            data: clientCountData,
-            error:
-              clientCountError,
-          },
-        ] = await Promise.all([
-          supabase.rpc(
-            "get_my_team_ranking",
-            {
-              p_month:
-                targetMonth,
-            }
-          ),
-
-          supabase.rpc(
-            "get_my_team_summary",
-            {
-              p_month:
-                targetMonth,
-            }
-          ),
-
-          supabase.rpc(
-            "get_my_team_client_count_ranking",
-            {
-              p_month:
-                targetMonth,
-            }
-          ),
-        ]);
-
-        if (rankingError) {
-          setErrorMessage(
-            rankingError.message
-          );
-
-          setLoading(false);
-          return;
-        }
-
-        if (summaryError) {
-          setErrorMessage(
-            summaryError.message
-          );
-
-          setLoading(false);
-          return;
-        }
-
-        if (clientCountError) {
-          setErrorMessage(
-            clientCountError.message
-          );
-
-          setLoading(false);
-          return;
-        }
-
-        setRankingRows(
-          (rankingData ??
-            []) as TeamRankingRow[]
-        );
-
-        setClientCountRows(
-          (
-            clientCountData ??
-            []
-          ).map(
-            (row: any) => ({
-              member_id:
-                row.member_id,
-
-              member_name:
-                row.member_name,
-
-              client_count:
-                Number(
-                  row.client_count ??
-                    0
-                ),
-
-              client_rank:
-                Number(
-                  row.client_rank ??
-                    0
-                ),
-            })
-          )
-        );
-
-        setTeamSummary(
-          ((summaryData ?? [])[0] ??
-            null) as
-            | TeamSummary
-            | null
-        );
-      } else {
-        const {
-          data: clientSalesData,
-          error:
-            clientSalesError,
-        } = await supabase
-          .from("client_sales")
-          .select(
-            "member_id, client_id"
-          )
-          .eq(
-            "team_id",
-            teamId
-          )
-          .gte(
-            "visit_date",
-            targetMonth
-          )
-          .lt(
-            "visit_date",
-            nextMonth
-          );
-
-        if (
-          clientSalesError
-        ) {
-          setErrorMessage(
-            clientSalesError.message
-          );
-
-          setLoading(false);
-          return;
-        }
-
-        const countMap =
-          new Map<
-            string,
-            Set<string>
-          >();
-
-        for (
-          const row of
-            clientSalesData ??
-            []
-        ) {
-          if (
-            !row.member_id ||
-            !row.client_id
-          ) {
-            continue;
-          }
-
-          if (
-            !countMap.has(
-              row.member_id
-            )
-          ) {
-            countMap.set(
-              row.member_id,
-              new Set<string>()
-            );
-          }
-
-          countMap
-            .get(
-              row.member_id
-            )!
-            .add(
-              row.client_id
-            );
-        }
-
-        const counts =
-          (
-            membersResult.data ??
-            []
-          )
-            .map(
-              (
-                member: Member
-              ) => ({
-                member_id:
-                  member.id,
-
-                member_name:
-                  member.name,
-
-                client_count:
-                  countMap.get(
-                    member.id
-                  )?.size ?? 0,
-              })
-            )
-            .sort(
-              (a, b) =>
-                b.client_count -
-                  a.client_count ||
-                a.member_name.localeCompare(
-                  b.member_name,
-                  "ja"
-                )
-            );
-
-        let lastCount:
-          | number
-          | null = null;
-
-        let currentRank = 0;
-
-        setClientCountRows(
-          counts.map(
-            (row, index) => {
-              if (
-                lastCount !==
-                row.client_count
-              ) {
-                currentRank =
-                  index + 1;
-
-                lastCount =
-                  row.client_count;
-              }
-
-              return {
-                ...row,
-                client_rank:
-                  currentRank,
-              };
-            }
-          )
-        );
-
-        setRankingRows([]);
-        setTeamSummary(null);
       }
 
       setAccessDenied(false);
@@ -691,49 +480,18 @@ export default function TeamDetailPage() {
       );
 
       setMembers(
-        membersResult.data ??
-          []
+        (membersResult.data ??
+          []) as Member[]
       );
 
       setResults(
-        dailyResult.data ??
-          []
+        (dailyResult.data ??
+          []) as DailyResult[]
       );
 
-      const {
-        data: memberGoalData,
-        error:
-          memberGoalError,
-      } = await supabase
-        .from(
-          "monthly_goals"
-        )
-        .select(
-          "member_id, target_sales, champagne_target, visit_count_target"
-        )
-        .eq(
-          "team_id",
-          teamId
-        )
-        .eq(
-          "target_month",
-          targetMonth
-        );
-
-      if (
-        memberGoalError
-      ) {
-        setErrorMessage(
-          memberGoalError.message
-        );
-
-        setLoading(false);
-        return;
-      }
-
       setMemberGoals(
-        memberGoalData ??
-          []
+        (memberGoalResult.data ??
+          []) as MemberGoal[]
       );
 
       if (goalResult.data) {
@@ -771,6 +529,321 @@ export default function TeamDetailPage() {
         setVisitTarget("");
       }
 
+      if (
+        normalizedRole ===
+        "member"
+      ) {
+        const [
+          rankingRes,
+          summaryRes,
+          clientRes,
+          mustRes,
+        ] = await Promise.all([
+          supabase.rpc(
+            "get_my_team_ranking",
+            {
+              p_month:
+                targetMonth,
+            }
+          ),
+
+          supabase.rpc(
+            "get_my_team_summary",
+            {
+              p_month:
+                targetMonth,
+            }
+          ),
+
+          supabase.rpc(
+            "get_my_team_client_count_ranking",
+            {
+              p_month:
+                targetMonth,
+            }
+          ),
+
+          supabase.rpc(
+            "get_my_team_must_progress",
+            {
+              p_month:
+                targetMonth,
+            }
+          ),
+        ]);
+
+        const rpcError =
+          rankingRes.error ||
+          summaryRes.error ||
+          clientRes.error ||
+          mustRes.error;
+
+        if (rpcError) {
+          setErrorMessage(
+            rpcError.message
+          );
+
+          setLoading(false);
+          return;
+        }
+
+        setRankingRows(
+          (rankingRes.data ??
+            []) as TeamRankingRow[]
+        );
+
+        setTeamSummary(
+          ((summaryRes.data ??
+            [])[0] ??
+            null) as
+            | TeamSummary
+            | null
+        );
+
+        setClientCountRows(
+          (clientRes.data ??
+            []).map(
+            (row: any) => ({
+              member_id:
+                row.member_id,
+
+              member_name:
+                row.member_name,
+
+              client_count:
+                Number(
+                  row.client_count ??
+                    0
+                ),
+
+              client_rank:
+                Number(
+                  row.client_rank ??
+                    0
+                ),
+            })
+          )
+        );
+
+        const mustRow =
+          (mustRes.data ??
+            [])[0] as any;
+
+        setTeamMustProgress(
+          mustRow
+            ? {
+                team_must_sales:
+                  Number(
+                    mustRow.team_must_sales ??
+                      0
+                  ),
+
+                team_existing_client_sales:
+                  Number(
+                    mustRow.team_existing_client_sales ??
+                      0
+                  ),
+
+                team_must_rate:
+                  Number(
+                    mustRow.team_must_rate ??
+                      0
+                  ),
+
+                team_must_remaining:
+                  Number(
+                    mustRow.team_must_remaining ??
+                      0
+                  ),
+              }
+            : null
+        );
+      } else {
+        setRankingRows([]);
+        setTeamSummary(null);
+
+        const {
+          data: clientSalesData,
+          error:
+            clientSalesError,
+        } = await supabase
+          .from(
+            "client_sales"
+          )
+          .select(
+            "member_id, client_id, amount"
+          )
+          .eq(
+            "team_id",
+            teamId
+          )
+          .gte(
+            "visit_date",
+            targetMonth
+          )
+          .lt(
+            "visit_date",
+            nextMonth
+          );
+
+        if (
+          clientSalesError
+        ) {
+          setErrorMessage(
+            clientSalesError.message
+          );
+
+          setLoading(false);
+          return;
+        }
+
+        const countMap =
+          new Map<
+            string,
+            Set<string>
+          >();
+
+        let existingSales = 0;
+
+        for (
+          const row of
+            clientSalesData ??
+            []
+        ) {
+          if (
+            !row.member_id ||
+            !row.client_id
+          ) {
+            continue;
+          }
+
+          existingSales +=
+            Number(
+              row.amount ?? 0
+            );
+
+          if (
+            !countMap.has(
+              row.member_id
+            )
+          ) {
+            countMap.set(
+              row.member_id,
+              new Set<string>()
+            );
+          }
+
+          countMap
+            .get(
+              row.member_id
+            )!
+            .add(
+              row.client_id
+            );
+        }
+
+        const counts =
+          (
+            (
+              membersResult.data ??
+              []
+            ) as Member[]
+          )
+            .map(
+              (member) => ({
+                member_id:
+                  member.id,
+
+                member_name:
+                  member.name,
+
+                client_count:
+                  countMap.get(
+                    member.id
+                  )?.size ?? 0,
+
+                client_rank:
+                  0,
+              })
+            )
+            .sort(
+              (a, b) =>
+                b.client_count -
+                  a.client_count ||
+                a.member_name.localeCompare(
+                  b.member_name,
+                  "ja"
+                )
+            );
+
+        let previousCount:
+          | number
+          | null = null;
+
+        let currentRank = 0;
+
+        const rankedCounts =
+          counts.map(
+            (row, index) => {
+              if (
+                previousCount !==
+                row.client_count
+              ) {
+                currentRank =
+                  index + 1;
+
+                previousCount =
+                  row.client_count;
+              }
+
+              return {
+                ...row,
+                client_rank:
+                  currentRank,
+              };
+            }
+          );
+
+        setClientCountRows(
+          rankedCounts
+        );
+
+        const teamMust =
+          (
+            memberGoalResult.data ??
+            []
+          ).reduce(
+            (sum, row) =>
+              sum +
+              Number(
+                row.must_sales ??
+                  0
+              ),
+            0
+          );
+
+        setTeamMustProgress({
+          team_must_sales:
+            teamMust,
+
+          team_existing_client_sales:
+            existingSales,
+
+          team_must_rate:
+            rawRate(
+              existingSales,
+              teamMust
+            ),
+
+          team_must_remaining:
+            Math.max(
+              0,
+              teamMust -
+                existingSales
+            ),
+        });
+      }
+
       setLoading(false);
     }
 
@@ -785,78 +858,85 @@ export default function TeamDetailPage() {
   ]);
 
   const directTotals =
-    useMemo(() => {
-      return results.reduce(
-        (sum, row) => ({
-          sales:
-            sum.sales +
-            Number(
-              row.sales ?? 0
-            ),
+    useMemo(
+      () =>
+        results.reduce(
+          (sum, row) => ({
+            sales:
+              sum.sales +
+              Number(
+                row.sales ??
+                  0
+              ),
 
-          champagne:
-            sum.champagne +
-            Number(
-              row.champagne_count ??
-                0
-            ),
+            champagne:
+              sum.champagne +
+              Number(
+                row.champagne_count ??
+                  0
+              ),
 
-          visits:
-            sum.visits +
-            Number(
-              row.visit_count ??
-                0
-            ),
+            visits:
+              sum.visits +
+              Number(
+                row.visit_count ??
+                  0
+              ),
 
-          repeats:
-            sum.repeats +
-            Number(
-              row.repeat_count ??
-                0
-            ),
+            repeats:
+              sum.repeats +
+              Number(
+                row.repeat_count ??
+                  0
+              ),
 
-          firstContacts:
-            sum.firstContacts +
-            Number(
-              row.first_contact_count ??
-                0
-            ),
+            firstContacts:
+              sum.firstContacts +
+              Number(
+                row.first_contact_count ??
+                  0
+              ),
 
-          sends:
-            sum.sends +
-            Number(
-              row.send_count ??
-                0
-            ),
+            sends:
+              sum.sends +
+              Number(
+                row.send_count ??
+                  0
+              ),
 
-          inhouse:
-            sum.inhouse +
-            Number(
-              row.inhouse_count ??
-                0
-            ),
-        }),
-        {
-          sales: 0,
-          champagne: 0,
-          visits: 0,
-          repeats: 0,
-          firstContacts: 0,
-          sends: 0,
-          inhouse: 0,
-        }
-      );
-    }, [results]);
+            inhouse:
+              sum.inhouse +
+              Number(
+                row.inhouse_count ??
+                  0
+              ),
+          }),
+          {
+            sales: 0,
+            champagne: 0,
+            visits: 0,
+            repeats: 0,
+            firstContacts: 0,
+            sends: 0,
+            inhouse: 0,
+          }
+        ),
+      [results]
+    );
+
+  const normalizedRole =
+    normalizeRole(role);
 
   const totals =
-    normalizeRole(role) ===
+    normalizedRole ===
       "member" &&
     teamSummary
       ? {
-          sales: Number(
-            teamSummary.team_sales ??
-              0
-          ),
+          sales:
+            Number(
+              teamSummary.team_sales ??
+                0
+            ),
 
           champagne:
             Number(
@@ -864,15 +944,17 @@ export default function TeamDetailPage() {
                 0
             ),
 
-          visits: Number(
-            teamSummary.team_visits ??
-              0
-          ),
+          visits:
+            Number(
+              teamSummary.team_visits ??
+                0
+            ),
 
-          repeats: Number(
-            teamSummary.team_repeats ??
-              0
-          ),
+          repeats:
+            Number(
+              teamSummary.team_repeats ??
+                0
+            ),
 
           firstContacts:
             Number(
@@ -880,20 +962,24 @@ export default function TeamDetailPage() {
                 0
             ),
 
-          sends: Number(
-            teamSummary.team_sends ??
-              0
-          ),
+          sends:
+            Number(
+              teamSummary.team_sends ??
+                0
+            ),
 
-          inhouse: Number(
-            teamSummary.team_inhouse ??
-              0
-          ),
+          inhouse:
+            Number(
+              teamSummary.team_inhouse ??
+                0
+            ),
         }
       : directTotals;
 
   const memberStats =
-    useMemo(() => {
+    useMemo<
+      MemberStat[]
+    >(() => {
       if (
         normalizeRole(
           role
@@ -903,13 +989,14 @@ export default function TeamDetailPage() {
           (row) => {
             const clientRow =
               clientCountRows.find(
-                (item) =>
-                  item.member_id ===
+                (x) =>
+                  x.member_id ===
                   row.member_id
               );
 
             return {
-              id: row.member_id,
+              id:
+                row.member_id,
 
               name:
                 row.member_name,
@@ -1052,18 +1139,20 @@ export default function TeamDetailPage() {
 
           const clientRow =
             clientCountRows.find(
-              (item) =>
-                item.member_id ===
+              (x) =>
+                x.member_id ===
                 member.id
             );
 
           return {
-            id: member.id,
+            id:
+              member.id,
 
             name:
               member.name,
 
-            salesRank: 0,
+            salesRank:
+              0,
 
             clientCountRank:
               Number(
@@ -1130,20 +1219,58 @@ export default function TeamDetailPage() {
       0
     );
 
+  const teamMustSales =
+    Number(
+      teamMustProgress
+        ?.team_must_sales ??
+        0
+    );
+
+  const teamExistingClientSales =
+    Number(
+      teamMustProgress
+        ?.team_existing_client_sales ??
+        0
+    );
+
+  const teamMustRate =
+    Number(
+      teamMustProgress
+        ?.team_must_rate ??
+        0
+    );
+
+  const teamMustRemaining =
+    Number(
+      teamMustProgress
+        ?.team_must_remaining ??
+        0
+    );
+
+  const teamMustOver =
+    Math.max(
+      0,
+      teamExistingClientSales -
+        teamMustSales
+    );
+
   const salesTarget =
-    goal?.target_sales ??
-    0;
+    Number(
+      goal?.target_sales ??
+        0
+    );
 
   const champagneGoal =
-    goal?.champagne_target ??
-    0;
+    Number(
+      goal?.champagne_target ??
+        0
+    );
 
   const visitGoal =
-    goal?.visit_count_target ??
-    0;
-
-  const normalizedRole =
-    normalizeRole(role);
+    Number(
+      goal?.visit_count_target ??
+        0
+    );
 
   const myTeamContributionRate =
     normalizedRole ===
@@ -1178,37 +1305,47 @@ export default function TeamDetailPage() {
           "member");
 
   const memberGoalTotals =
-    useMemo(() => {
-      return memberGoals.reduce(
-        (sum, row) => ({
-          sales:
-            sum.sales +
-            Number(
-              row.target_sales ??
-                0
-            ),
+    useMemo(
+      () =>
+        memberGoals.reduce(
+          (sum, row) => ({
+            mustSales:
+              sum.mustSales +
+              Number(
+                row.must_sales ??
+                  0
+              ),
 
-          champagne:
-            sum.champagne +
-            Number(
-              row.champagne_target ??
-                0
-            ),
+            sales:
+              sum.sales +
+              Number(
+                row.target_sales ??
+                  0
+              ),
 
-          visits:
-            sum.visits +
-            Number(
-              row.visit_count_target ??
-                0
-            ),
-        }),
-        {
-          sales: 0,
-          champagne: 0,
-          visits: 0,
-        }
-      );
-    }, [memberGoals]);
+            champagne:
+              sum.champagne +
+              Number(
+                row.champagne_target ??
+                  0
+              ),
+
+            visits:
+              sum.visits +
+              Number(
+                row.visit_count_target ??
+                  0
+              ),
+          }),
+          {
+            mustSales: 0,
+            sales: 0,
+            champagne: 0,
+            visits: 0,
+          }
+        ),
+      [memberGoals]
+    );
 
   const unallocatedSales =
     Math.max(
@@ -1256,9 +1393,13 @@ export default function TeamDetailPage() {
     } = await supabase
       .from("teams")
       .update({
-        name: nextName,
+        name:
+          nextName,
       })
-      .eq("id", teamId)
+      .eq(
+        "id",
+        teamId
+      )
       .select(
         "id, name, department_id"
       )
@@ -1293,120 +1434,17 @@ export default function TeamDetailPage() {
   }
 
   async function saveGoal() {
-    setMessage("");
-    setErrorMessage("");
-
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      router.replace("/login");
-      return;
-    }
-
-    const {
-      data: latestProfile,
-      error:
-        latestProfileError,
-    } = await supabase
-      .from("profiles")
-      .select(
-        "role, team_id"
-      )
-      .eq("id", user.id)
-      .maybeSingle();
-
-    if (
-      latestProfileError
-    ) {
-      setErrorMessage(
-        latestProfileError.message
-      );
-
-      return;
-    }
-
-    const latestRole =
-      normalizeRole(
-        latestProfile?.role ??
-          null
-      );
-
-    let latestDepartmentId:
-      | string
-      | null = null;
-
-    if (
-      latestProfile?.team_id
-    ) {
-      const {
-        data: latestOwnTeam,
-        error:
-          latestOwnTeamError,
-      } = await supabase
-        .from("teams")
-        .select(
-          "department_id"
-        )
-        .eq(
-          "id",
-          latestProfile.team_id
-        )
-        .maybeSingle();
-
-      if (
-        latestOwnTeamError
-      ) {
-        setErrorMessage(
-          latestOwnTeamError.message
-        );
-
-        return;
-      }
-
-      latestDepartmentId =
-        latestOwnTeam?.department_id ??
-        null;
-    }
-
-    const latestCanEditThisTeam =
-      canEditTeamGoal(
-        latestProfile?.role ??
-          null
-      ) &&
-      (latestRole ===
-      "team_manager"
-        ? !!latestProfile?.team_id &&
-          latestProfile.team_id ===
-            teamId
-
-        : latestRole ===
-          "department_manager"
-          ? !!latestDepartmentId &&
-            !!team?.department_id &&
-            latestDepartmentId ===
-              team.department_id
-
-          : latestRole !==
-            "member");
-
-    if (
-      !latestCanEditThisTeam
-    ) {
-      setEditing(false);
-
-      setErrorMessage(
-        "このチームの目標を編集する権限がありません"
-      );
-
+    if (!canEditThisTeam) {
       return;
     }
 
     setSaving(true);
+    setMessage("");
+    setErrorMessage("");
 
     const payload = {
-      team_id: teamId,
+      team_id:
+        teamId,
 
       target_month:
         `${month}-01`,
@@ -1424,7 +1462,8 @@ export default function TeamDetailPage() {
 
       visit_count_target:
         Number(
-          visitTarget || 0
+          visitTarget ||
+            0
         ),
 
       updated_at:
@@ -1435,11 +1474,16 @@ export default function TeamDetailPage() {
       data,
       error,
     } = await supabase
-      .from("team_goals")
-      .upsert(payload, {
-        onConflict:
-          "team_id,target_month",
-      })
+      .from(
+        "team_goals"
+      )
+      .upsert(
+        payload,
+        {
+          onConflict:
+            "team_id,target_month",
+        }
+      )
       .select(
         "id, target_sales, champagne_target, visit_count_target"
       )
@@ -1455,9 +1499,11 @@ export default function TeamDetailPage() {
     }
 
     setGoal(data);
+
     setMessage(
       "保存しました"
     );
+
     setEditing(false);
     setSaving(false);
   }
@@ -1504,136 +1550,184 @@ export default function TeamDetailPage() {
   const rankingTabs: {
     key: string;
     label: string;
+    getValue:
+      (
+        m: MemberStat
+      ) => number;
 
-    getValue: (
-      m: (typeof memberStats)[number]
-    ) => number;
-
-    format: (
-      v: number
-    ) => string;
+    format:
+      (
+        v: number
+      ) => string;
   }[] = [
     {
-      key: "sales",
-      label: "売上",
+      key:
+        "sales",
 
-      getValue: (m) =>
-        m.sales,
+      label:
+        "売上",
 
-      format: (v) =>
-        canViewSalesAmount
-          ? yen(v)
-          : "",
+      getValue:
+        (m) =>
+          m.sales,
+
+      format:
+        (v) =>
+          canViewSalesAmount
+            ? yen(v)
+            : "",
     },
 
     {
-      key: "champagne",
-      label: "オリシャン",
+      key:
+        "champagne",
 
-      getValue: (m) =>
-        m.champagne,
+      label:
+        "オリシャン",
 
-      format: (v) =>
-        `${v}本`,
+      getValue:
+        (m) =>
+          m.champagne,
+
+      format:
+        (v) =>
+          `${v}本`,
     },
 
     {
-      key: "visits",
-      label: "来店",
+      key:
+        "visits",
 
-      getValue: (m) =>
-        m.visits,
+      label:
+        "来店",
 
-      format: (v) =>
-        `${v}組`,
+      getValue:
+        (m) =>
+          m.visits,
+
+      format:
+        (v) =>
+          `${v}組`,
     },
 
     {
-      key: "clientCount",
-      label: "顧客数",
+      key:
+        "clientCount",
 
-      getValue: (m) =>
-        m.clientCount,
+      label:
+        "顧客数",
 
-      format: (v) =>
-        `${v}人`,
+      getValue:
+        (m) =>
+          m.clientCount,
+
+      format:
+        (v) =>
+          `${v}人`,
     },
 
     {
-      key: "sends",
-      label: "送り",
+      key:
+        "sends",
 
-      getValue: (m) =>
-        m.sends,
+      label:
+        "送り",
 
-      format: (v) =>
-        `${v}件`,
+      getValue:
+        (m) =>
+          m.sends,
+
+      format:
+        (v) =>
+          `${v}件`,
     },
 
     {
-      key: "inhouse",
-      label: "場内",
+      key:
+        "inhouse",
 
-      getValue: (m) =>
-        m.inhouse,
+      label:
+        "場内",
 
-      format: (v) =>
-        `${v}件`,
+      getValue:
+        (m) =>
+          m.inhouse,
+
+      format:
+        (v) =>
+          `${v}件`,
     },
 
     {
-      key: "inhouseRate",
-      label: "場内率",
+      key:
+        "inhouseRate",
 
-      getValue: (m) =>
-        m.inhouseRate,
+      label:
+        "場内率",
 
-      format: (v) =>
-        `${
-          Math.round(
-            v * 10
-          ) / 10
-        }%`,
+      getValue:
+        (m) =>
+          m.inhouseRate,
+
+      format:
+        (v) =>
+          `${
+            Math.round(
+              v * 10
+            ) / 10
+          }%`,
     },
 
     {
-      key: "repeats",
-      label: "リピート",
+      key:
+        "repeats",
 
-      getValue: (m) =>
-        m.repeats,
+      label:
+        "リピート",
 
-      format: (v) =>
-        `${v}組`,
+      getValue:
+        (m) =>
+          m.repeats,
+
+      format:
+        (v) =>
+          `${v}組`,
     },
 
     {
-      key: "repeatRate",
-      label: "リピート率",
+      key:
+        "repeatRate",
 
-      getValue: (m) =>
-        m.repeatRate,
+      label:
+        "リピート率",
 
-      format: (v) =>
-        `${
-          Math.round(
-            v * 10
-          ) / 10
-        }%`,
+      getValue:
+        (m) =>
+          m.repeatRate,
+
+      format:
+        (v) =>
+          `${
+            Math.round(
+              v * 10
+            ) / 10
+          }%`,
     },
   ];
 
   const activeTab =
     rankingTabs.find(
       (tab) =>
-        tab.key === rankTab
+        tab.key ===
+        rankTab
     ) ??
     rankingTabs[0];
 
   const rankedMembers =
     normalizedRole ===
       "member" &&
-    rankTab === "sales"
+    rankTab ===
+      "sales"
       ? [
           ...memberStats,
         ].sort(
@@ -1897,7 +1991,7 @@ export default function TeamDetailPage() {
             <div
               className="h-full bg-white"
               style={{
-                width: `${rate(
+                width: `${cappedRate(
                   totals.sales,
                   salesTarget
                 )}%`,
@@ -1915,7 +2009,7 @@ export default function TeamDetailPage() {
 
             <span>
               達成率{" "}
-              {rate(
+              {rawRate(
                 totals.sales,
                 salesTarget
               )}
@@ -1936,61 +2030,43 @@ export default function TeamDetailPage() {
         </section>
 
         <section className="mt-3 grid grid-cols-2 gap-3">
-          <div className="rounded-3xl border border-zinc-800 bg-zinc-950 p-4">
-            <p className="text-xs text-zinc-500">
-              オリシャン目標
-            </p>
-
-            <p className="mt-2 text-2xl font-bold">
-              {goal
+          <GoalMiniBox
+            label="オリシャン目標"
+            target={
+              goal
                 ? `${champagneGoal}本`
-                : "未設定"}
-            </p>
+                : "未設定"
+            }
+            current={`現在 ${totals.champagne}本`}
+            remaining={
+              goal
+                ? `残り ${Math.max(
+                    0,
+                    champagneGoal -
+                      totals.champagne
+                  )}本`
+                : "残り －"
+            }
+          />
 
-            <p className="mt-3 text-xs text-zinc-500">
-              現在{" "}
-              {totals.champagne}
-              本
-            </p>
-
-            <p className="mt-1 text-xs text-zinc-500">
-              残り{" "}
-              {Math.max(
-                0,
-                champagneGoal -
-                  totals.champagne
-              )}
-              本
-            </p>
-          </div>
-
-          <div className="rounded-3xl border border-zinc-800 bg-zinc-950 p-4">
-            <p className="text-xs text-zinc-500">
-              来店組数目標
-            </p>
-
-            <p className="mt-2 text-2xl font-bold">
-              {goal
+          <GoalMiniBox
+            label="来店組数目標"
+            target={
+              goal
                 ? `${visitGoal}組`
-                : "未設定"}
-            </p>
-
-            <p className="mt-3 text-xs text-zinc-500">
-              現在{" "}
-              {totals.visits}
-              組
-            </p>
-
-            <p className="mt-1 text-xs text-zinc-500">
-              残り{" "}
-              {Math.max(
-                0,
-                visitGoal -
-                  totals.visits
-              )}
-              組
-            </p>
-          </div>
+                : "未設定"
+            }
+            current={`現在 ${totals.visits}組`}
+            remaining={
+              goal
+                ? `残り ${Math.max(
+                    0,
+                    visitGoal -
+                      totals.visits
+                  )}組`
+                : "残り －"
+            }
+          />
         </section>
 
         {normalizedRole ===
@@ -2095,6 +2171,93 @@ export default function TeamDetailPage() {
               </div>
             </section>
           )}
+
+        <section className="mt-6 rounded-3xl border border-zinc-700 bg-zinc-950 p-5">
+          <p className="text-xs text-zinc-500">
+            TEAM MUST
+          </p>
+
+          <div className="mt-2 flex items-end justify-between gap-3">
+            <div>
+              <p className="text-sm text-zinc-400">
+                チーム必達
+              </p>
+
+              <p className="mt-1 text-3xl font-bold">
+                {teamMustSales >
+                0
+                  ? yen(
+                      teamMustSales
+                    )
+                  : "未設定"}
+              </p>
+            </div>
+
+            <p className="text-2xl font-bold">
+              {teamMustSales >
+              0
+                ? `${teamMustRate}%`
+                : "－"}
+            </p>
+          </div>
+
+          <div className="mt-5 h-2 overflow-hidden rounded-full bg-zinc-800">
+            <div
+              className="h-full rounded-full bg-white"
+              style={{
+                width: `${Math.min(
+                  100,
+                  teamMustRate
+                )}%`,
+              }}
+            />
+          </div>
+
+          <div className="mt-4 grid grid-cols-2 gap-3">
+            <TeamResultBox
+              label="既存顧客売上"
+              value={yen(
+                teamExistingClientSales
+              )}
+            />
+
+            <TeamResultBox
+              label={
+                teamMustOver >
+                0
+                  ? "必達超過"
+                  : "残り"
+              }
+              value={
+                teamMustSales <=
+                0
+                  ? "－"
+                  : teamMustOver >
+                      0
+                    ? `+${yen(
+                        teamMustOver
+                      )}`
+                    : yen(
+                        teamMustRemaining
+                      )
+              }
+            />
+          </div>
+
+          <div className="mt-4 border-t border-zinc-800 pt-4">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-zinc-500">
+                個人必達合計
+              </span>
+
+              <span className="font-bold">
+                {yen(
+                  teamMustSales
+                )}
+              </span>
+            </div>
+          </div>
+        </section>
 
         <section className="mt-6 rounded-3xl border border-zinc-800 bg-zinc-950 p-5">
           <p className="text-xs text-zinc-500">
@@ -2244,198 +2407,59 @@ export default function TeamDetailPage() {
 
         {normalizedRole !==
           "member" && (
-          <>
-            <section className="mt-6 rounded-3xl border border-zinc-800 bg-zinc-950 p-5">
-              <p className="text-xs text-zinc-500">
-                GOAL ALLOCATION
-              </p>
+          <section className="mt-6 rounded-3xl border border-zinc-800 bg-zinc-950 p-5">
+            <p className="text-xs text-zinc-500">
+              GOAL ALLOCATION
+            </p>
 
-              <h2 className="mt-2 text-xl font-bold">
-                個人目標への配分状況
-              </h2>
+            <h2 className="mt-2 text-xl font-bold">
+              個人目標への配分状況
+            </h2>
 
-              <div className="mt-5 space-y-5">
-                <div>
-                  <p className="text-xs text-zinc-500">
-                    売上
-                  </p>
+            <div className="mt-5 space-y-5">
+              <AllocationRow
+                label="売上"
+                team={yen(
+                  salesTarget
+                )}
+                individual={yen(
+                  memberGoalTotals.sales
+                )}
+                unallocated={
+                  unallocatedSales >
+                  0
+                    ? yen(
+                        unallocatedSales
+                      )
+                    : "✓ 配分完了"
+                }
+              />
 
-                  <div className="mt-2 flex justify-between">
-                    <span className="text-sm">
-                      チーム目標
-                    </span>
+              <AllocationRow
+                label="オリシャン"
+                team={`${champagneGoal}本`}
+                individual={`${memberGoalTotals.champagne}本`}
+                unallocated={
+                  unallocatedChampagne >
+                  0
+                    ? `${unallocatedChampagne}本`
+                    : "✓ 配分完了"
+                }
+              />
 
-                    <span className="font-bold">
-                      {yen(
-                        salesTarget
-                      )}
-                    </span>
-                  </div>
-
-                  <div className="mt-2 flex justify-between">
-                    <span className="text-sm text-zinc-500">
-                      個人目標合計
-                    </span>
-
-                    <span>
-                      {yen(
-                        memberGoalTotals.sales
-                      )}
-                    </span>
-                  </div>
-
-                  <div className="mt-2 flex justify-between">
-                    <span className="text-sm text-zinc-500">
-                      {unallocatedSales >
-                      0
-                        ? "未配分"
-                        : "達成状況"}
-                    </span>
-
-                    <span
-                      className={
-                        unallocatedSales <=
-                        0
-                          ? "font-bold text-white"
-                          : ""
-                      }
-                    >
-                      {unallocatedSales >
-                      0
-                        ? yen(
-                            unallocatedSales
-                          )
-                        : unallocatedSales ===
-                            0
-                          ? "✓ 目標達成"
-                          : `✓ 目標達成 +${yen(
-                              Math.abs(
-                                unallocatedSales
-                              )
-                            )}`}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="border-t border-zinc-800 pt-4">
-                  <p className="text-xs text-zinc-500">
-                    オリシャン
-                  </p>
-
-                  <div className="mt-2 flex justify-between">
-                    <span className="text-sm">
-                      チーム目標
-                    </span>
-
-                    <span className="font-bold">
-                      {
-                        champagneGoal
-                      }
-                      本
-                    </span>
-                  </div>
-
-                  <div className="mt-2 flex justify-between">
-                    <span className="text-sm text-zinc-500">
-                      個人目標合計
-                    </span>
-
-                    <span>
-                      {
-                        memberGoalTotals.champagne
-                      }
-                      本
-                    </span>
-                  </div>
-
-                  <div className="mt-2 flex justify-between">
-                    <span className="text-sm text-zinc-500">
-                      {unallocatedChampagne >
-                      0
-                        ? "未配分"
-                        : "達成状況"}
-                    </span>
-
-                    <span
-                      className={
-                        unallocatedChampagne <=
-                        0
-                          ? "font-bold text-white"
-                          : ""
-                      }
-                    >
-                      {unallocatedChampagne >
-                      0
-                        ? `${unallocatedChampagne}本`
-                        : unallocatedChampagne ===
-                            0
-                          ? "✓ 目標達成"
-                          : `✓ 目標達成 +${Math.abs(
-                              unallocatedChampagne
-                            )}本`}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="border-t border-zinc-800 pt-4">
-                  <p className="text-xs text-zinc-500">
-                    来店組数
-                  </p>
-
-                  <div className="mt-2 flex justify-between">
-                    <span className="text-sm">
-                      チーム目標
-                    </span>
-
-                    <span className="font-bold">
-                      {visitGoal}組
-                    </span>
-                  </div>
-
-                  <div className="mt-2 flex justify-between">
-                    <span className="text-sm text-zinc-500">
-                      個人目標合計
-                    </span>
-
-                    <span>
-                      {
-                        memberGoalTotals.visits
-                      }
-                      組
-                    </span>
-                  </div>
-
-                  <div className="mt-2 flex justify-between">
-                    <span className="text-sm text-zinc-500">
-                      {unallocatedVisits >
-                      0
-                        ? "未配分"
-                        : "達成状況"}
-                    </span>
-
-                    <span
-                      className={
-                        unallocatedVisits <=
-                        0
-                          ? "font-bold text-white"
-                          : ""
-                      }
-                    >
-                      {unallocatedVisits >
-                      0
-                        ? `${unallocatedVisits}組`
-                        : unallocatedVisits ===
-                            0
-                          ? "✓ 目標達成"
-                          : `✓ 目標達成 +${Math.abs(
-                              unallocatedVisits
-                            )}組`}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </section>
-          </>
+              <AllocationRow
+                label="来店組数"
+                team={`${visitGoal}組`}
+                individual={`${memberGoalTotals.visits}組`}
+                unallocated={
+                  unallocatedVisits >
+                  0
+                    ? `${unallocatedVisits}組`
+                    : "✓ 配分完了"
+                }
+              />
+            </div>
+          </section>
         )}
 
         {normalizedRole !==
@@ -2505,6 +2529,12 @@ export default function TeamDetailPage() {
                         0
                     );
 
+                  const memberMust =
+                    Number(
+                      memberGoal?.must_sales ??
+                        0
+                    );
+
                   const memberChampagneTarget =
                     Number(
                       memberGoal?.champagne_target ??
@@ -2518,10 +2548,21 @@ export default function TeamDetailPage() {
                     );
 
                   const memberSalesRate =
-                    rate(
+                    cappedRate(
                       memberResult.sales,
                       memberSalesTarget
                     );
+
+                  const memberContribution =
+                    salesTarget >
+                    0
+                      ? Math.round(
+                          (memberResult.sales /
+                            salesTarget) *
+                            1000
+                        ) /
+                        10
+                      : 0;
 
                   return (
                     <Link
@@ -2583,53 +2624,48 @@ export default function TeamDetailPage() {
                           <span>
                             {salesTarget >
                             0
-                              ? `チーム貢献率 ${
-                                  Math.round(
-                                    (memberResult.sales /
-                                      salesTarget) *
-                                      1000
-                                  ) /
-                                  10
-                                }%`
+                              ? `チーム貢献率 ${memberContribution}%`
                               : "チーム目標未設定"}
                           </span>
                         </div>
                       </div>
 
                       <div className="mt-4 grid grid-cols-2 gap-3">
-                        <div className="rounded-xl bg-zinc-900 p-3">
-                          <p className="text-xs text-zinc-500">
-                            オリシャン
-                          </p>
+                        <TeamResultBox
+                          label="個人必達"
+                          value={
+                            memberMust >
+                            0
+                              ? yen(
+                                  memberMust
+                                )
+                              : "未設定"
+                          }
+                        />
 
-                          <p className="mt-1 font-bold">
-                            {
-                              memberResult.champagne
-                            }
-                            {" / "}
-                            {memberChampagneTarget >
+                        <TeamResultBox
+                          label="オリシャン"
+                          value={`${
+                            memberResult.champagne
+                          } / ${
+                            memberChampagneTarget >
                             0
                               ? `${memberChampagneTarget}本`
-                              : "未設定"}
-                          </p>
-                        </div>
+                              : "未設定"
+                          }`}
+                        />
 
-                        <div className="rounded-xl bg-zinc-900 p-3">
-                          <p className="text-xs text-zinc-500">
-                            来店組数
-                          </p>
-
-                          <p className="mt-1 font-bold">
-                            {
-                              memberResult.visits
-                            }
-                            {" / "}
-                            {memberVisitTarget >
+                        <TeamResultBox
+                          label="来店組数"
+                          value={`${
+                            memberResult.visits
+                          } / ${
+                            memberVisitTarget >
                             0
                               ? `${memberVisitTarget}組`
-                              : "未設定"}
-                          </p>
-                        </div>
+                              : "未設定"
+                          }`}
+                        />
                       </div>
                     </Link>
                   );
@@ -2691,9 +2727,91 @@ function TeamResultBox({
         {label}
       </p>
 
-      <p className="mt-1 text-xl font-bold">
+      <p className="mt-1 break-words text-xl font-bold">
         {value}
       </p>
+    </div>
+  );
+}
+
+function GoalMiniBox({
+  label,
+  target,
+  current,
+  remaining,
+}: {
+  label: string;
+  target: string;
+  current: string;
+  remaining: string;
+}) {
+  return (
+    <div className="rounded-3xl border border-zinc-800 bg-zinc-950 p-4">
+      <p className="text-xs text-zinc-500">
+        {label}
+      </p>
+
+      <p className="mt-2 text-2xl font-bold">
+        {target}
+      </p>
+
+      <p className="mt-3 text-xs text-zinc-500">
+        {current}
+      </p>
+
+      <p className="mt-1 text-xs text-zinc-500">
+        {remaining}
+      </p>
+    </div>
+  );
+}
+
+function AllocationRow({
+  label,
+  team,
+  individual,
+  unallocated,
+}: {
+  label: string;
+  team: string;
+  individual: string;
+  unallocated: string;
+}) {
+  return (
+    <div className="border-t border-zinc-800 pt-4 first:border-t-0 first:pt-0">
+      <p className="text-xs text-zinc-500">
+        {label}
+      </p>
+
+      <div className="mt-2 flex justify-between">
+        <span className="text-sm">
+          チーム目標
+        </span>
+
+        <span className="font-bold">
+          {team}
+        </span>
+      </div>
+
+      <div className="mt-2 flex justify-between">
+        <span className="text-sm text-zinc-500">
+          個人目標合計
+        </span>
+
+        <span>
+          {individual}
+        </span>
+      </div>
+
+      <div className="mt-2 flex justify-between">
+        <span className="text-sm text-zinc-500">
+          未配分
+        </span>
+
+        <span>
+          {unallocated}
+        </span>
+      </div>
     </div>
   );
 }
