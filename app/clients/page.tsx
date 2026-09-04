@@ -5,6 +5,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
 
+type VisitType =
+  | "existing"
+  | "inhouse"
+  | "companion";
+
 type Profile = {
   role: string | null;
   member_id: string | null;
@@ -34,6 +39,7 @@ type ClientSale = {
   client_name: string;
   amount: number;
   visit_date: string;
+  visit_type: VisitType;
 };
 
 type ClientMustTarget = {
@@ -77,20 +83,47 @@ function defaultDateForMonth(month: string) {
 }
 
 function yen(value: number) {
-  return `¥${Number(value || 0).toLocaleString("ja-JP")}`;
+  return `¥${Number(value || 0).toLocaleString(
+    "ja-JP"
+  )}`;
 }
 
-function percent(current: number, target: number) {
+function percent(
+  current: number,
+  target: number
+) {
   if (target <= 0) {
     return 0;
   }
 
-  return Math.round((current / target) * 1000) / 10;
+  return (
+    Math.round(
+      (current / target) * 1000
+    ) / 10
+  );
+}
+
+function visitTypeLabel(
+  value: VisitType
+) {
+  switch (value) {
+    case "inhouse":
+      return "場内";
+
+    case "companion":
+      return "新規（お連れ様）";
+
+    default:
+      return "既存";
+  }
 }
 
 export default function ClientsPage() {
   const router = useRouter();
-  const [supabase] = useState(() => createClient());
+
+  const [supabase] = useState(() =>
+    createClient()
+  );
 
   const [profile, setProfile] =
     useState<Profile | null>(null);
@@ -104,10 +137,18 @@ export default function ClientsPage() {
   const [sales, setSales] =
     useState<ClientSale[]>([]);
 
-  const [mustTargets, setMustTargets] =
-    useState<ClientMustTarget[]>([]);
+  const [
+    mustTargets,
+    setMustTargets,
+  ] =
+    useState<
+      ClientMustTarget[]
+    >([]);
 
-  const [memberGoals, setMemberGoals] =
+  const [
+    memberGoals,
+    setMemberGoals,
+  ] =
     useState<MemberGoal[]>([]);
 
   const [month, setMonth] =
@@ -116,55 +157,115 @@ export default function ClientsPage() {
   const [
     selectedMemberId,
     setSelectedMemberId,
-  ] = useState<string | null>(null);
+  ] =
+    useState<string | null>(
+      null
+    );
 
   const [
     selectedClientId,
     setSelectedClientId,
-  ] = useState<string | null>(null);
+  ] =
+    useState<string | null>(
+      null
+    );
 
-  const [newClientName, setNewClientName] =
+  const [
+    newClientName,
+    setNewClientName,
+  ] =
     useState("");
 
-  const [saleAmount, setSaleAmount] =
+  const [
+    saleAmount,
+    setSaleAmount,
+  ] =
     useState("");
 
-  const [saleDate, setSaleDate] =
-    useState(defaultDateForMonth(currentMonth()));
+  const [
+    saleDate,
+    setSaleDate,
+  ] = useState(
+    defaultDateForMonth(
+      currentMonth()
+    )
+  );
 
-  const [clientMustInput, setClientMustInput] =
+  const [
+    saleVisitType,
+    setSaleVisitType,
+  ] =
+    useState<VisitType>(
+      "existing"
+    );
+
+  const [
+    clientMustInput,
+    setClientMustInput,
+  ] =
     useState("");
 
   const [
     editingSaleId,
     setEditingSaleId,
-  ] = useState<string | null>(null);
+  ] =
+    useState<string | null>(
+      null
+    );
 
-  const [editAmount, setEditAmount] =
+  const [
+    editAmount,
+    setEditAmount,
+  ] =
     useState("");
 
-  const [editVisitDate, setEditVisitDate] =
+  const [
+    editVisitDate,
+    setEditVisitDate,
+  ] =
     useState("");
 
-  const [loading, setLoading] =
+  const [
+    editVisitType,
+    setEditVisitType,
+  ] =
+    useState<VisitType>(
+      "existing"
+    );
+
+  const [
+    loading,
+    setLoading,
+  ] =
     useState(true);
 
-  const [saving, setSaving] =
+  const [
+    saving,
+    setSaving,
+  ] =
     useState(false);
 
   const [
     errorMessage,
     setErrorMessage,
-  ] = useState("");
+  ] =
+    useState("");
 
-  const [message, setMessage] =
+  const [
+    message,
+    setMessage,
+  ] =
     useState("");
 
   const isCast =
-    profile?.role === "cast" ||
-    profile?.role === "member";
+    profile?.role ===
+      "cast" ||
+    profile?.role ===
+      "member";
 
-  async function load(showLoader = true) {
+  async function load(
+    showLoader = true
+  ) {
     if (showLoader) {
       setLoading(true);
     }
@@ -173,10 +274,14 @@ export default function ClientsPage() {
 
     const {
       data: { user },
-    } = await supabase.auth.getUser();
+    } =
+      await supabase.auth.getUser();
 
     if (!user) {
-      router.replace("/login");
+      router.replace(
+        "/login"
+      );
+
       return;
     }
 
@@ -191,7 +296,10 @@ export default function ClientsPage() {
       .eq("id", user.id)
       .maybeSingle();
 
-    if (profileError || !profileData) {
+    if (
+      profileError ||
+      !profileData
+    ) {
       setErrorMessage(
         profileError?.message ??
           "プロフィールが見つかりません"
@@ -204,7 +312,8 @@ export default function ClientsPage() {
       return;
     }
 
-    const p = profileData as Profile;
+    const p =
+      profileData as Profile;
 
     setProfile(p);
 
@@ -212,8 +321,12 @@ export default function ClientsPage() {
       p.role === "cast" ||
       p.role === "member";
 
-    const [year, monthNumber] =
-      month.split("-").map(Number);
+    const [
+      year,
+      monthNumber,
+    ] = month
+      .split("-")
+      .map(Number);
 
     const next =
       new Date(
@@ -237,9 +350,11 @@ export default function ClientsPage() {
       goalsResult,
     ] = await Promise.all([
       supabase
-        .from("client_sales")
+        .from(
+          "client_sales"
+        )
         .select(
-          "id, client_id, member_id, team_id, client_name, amount, visit_date"
+          "id, client_id, member_id, team_id, client_name, amount, visit_date, visit_type"
         )
         .gte(
           "visit_date",
@@ -252,7 +367,8 @@ export default function ClientsPage() {
         .order(
           "visit_date",
           {
-            ascending: false,
+            ascending:
+              false,
           }
         ),
 
@@ -276,7 +392,9 @@ export default function ClientsPage() {
         ),
 
       supabase
-        .from("monthly_goals")
+        .from(
+          "monthly_goals"
+        )
         .select(
           "member_id, must_sales"
         )
@@ -286,9 +404,12 @@ export default function ClientsPage() {
         ),
     ]);
 
-    if (salesResult.error) {
+    if (
+      salesResult.error
+    ) {
       setErrorMessage(
-        salesResult.error.message
+        salesResult.error
+          .message
       );
 
       if (showLoader) {
@@ -298,9 +419,12 @@ export default function ClientsPage() {
       return;
     }
 
-    if (clientsResult.error) {
+    if (
+      clientsResult.error
+    ) {
       setErrorMessage(
-        clientsResult.error.message
+        clientsResult.error
+          .message
       );
 
       if (showLoader) {
@@ -310,9 +434,12 @@ export default function ClientsPage() {
       return;
     }
 
-    if (mustResult.error) {
+    if (
+      mustResult.error
+    ) {
       setErrorMessage(
-        mustResult.error.message
+        mustResult.error
+          .message
       );
 
       if (showLoader) {
@@ -322,9 +449,12 @@ export default function ClientsPage() {
       return;
     }
 
-    if (goalsResult.error) {
+    if (
+      goalsResult.error
+    ) {
       setErrorMessage(
-        goalsResult.error.message
+        goalsResult.error
+          .message
       );
 
       if (showLoader) {
@@ -335,14 +465,26 @@ export default function ClientsPage() {
     }
 
     const loadedSales =
-      (salesResult.data ??
-        []) as ClientSale[];
+      (
+        salesResult.data ??
+        []
+      ).map(
+        (row: any) => ({
+          ...row,
+
+          visit_type:
+            (row.visit_type ??
+              "existing") as VisitType,
+        })
+      ) as ClientSale[];
 
     const loadedClients =
       (clientsResult.data ??
         []) as Client[];
 
-    setSales(loadedSales);
+    setSales(
+      loadedSales
+    );
 
     setClients(
       loadedClients
@@ -362,7 +504,8 @@ export default function ClientsPage() {
       setMembers([]);
 
       setSelectedMemberId(
-        p.member_id ?? null
+        p.member_id ??
+          null
       );
     } else {
       const {
@@ -426,11 +569,17 @@ export default function ClientsPage() {
       )
     );
 
+    setSaleVisitType(
+      "existing"
+    );
+
     setSelectedClientId(
       null
     );
 
-    setClientMustInput("");
+    setClientMustInput(
+      ""
+    );
 
     load();
 
@@ -469,11 +618,20 @@ export default function ClientsPage() {
       activeMemberId,
     ]);
 
+  const existingMemberSales =
+    useMemo(() => {
+      return memberSales.filter(
+        (row) =>
+          row.visit_type ===
+          "existing"
+      );
+    }, [memberSales]);
+
   const monthClientCount =
     useMemo(() => {
       const ids =
         new Set(
-          memberSales
+          existingMemberSales
             .map(
               (row) =>
                 row.client_id
@@ -487,7 +645,9 @@ export default function ClientsPage() {
         );
 
       return ids.size;
-    }, [memberSales]);
+    }, [
+      existingMemberSales,
+    ]);
 
   const memberTotalSales =
     useMemo(() => {
@@ -538,6 +698,13 @@ export default function ClientsPage() {
                 client.id
             );
 
+          const existingRows =
+            rows.filter(
+              (row) =>
+                row.visit_type ===
+                "existing"
+            );
+
           const total =
             rows.reduce(
               (sum, row) =>
@@ -581,6 +748,13 @@ export default function ClientsPage() {
             visits:
               rows.length,
 
+            existingVisits:
+              existingRows.length,
+
+            countsAsClient:
+              existingRows.length >
+              0,
+
             latest,
 
             mustSales,
@@ -606,36 +780,38 @@ export default function ClientsPage() {
               ),
           };
         })
-        .sort((a, b) => {
-          if (
-            b.total !==
-            a.total
-          ) {
-            return (
-              b.total -
+        .sort(
+          (a, b) => {
+            if (
+              b.total !==
               a.total
+            ) {
+              return (
+                b.total -
+                a.total
+              );
+            }
+
+            if (
+              a.latest &&
+              !b.latest
+            ) {
+              return -1;
+            }
+
+            if (
+              !a.latest &&
+              b.latest
+            ) {
+              return 1;
+            }
+
+            return a.name.localeCompare(
+              b.name,
+              "ja"
             );
           }
-
-          if (
-            a.latest &&
-            !b.latest
-          ) {
-            return -1;
-          }
-
-          if (
-            !a.latest &&
-            b.latest
-          ) {
-            return 1;
-          }
-
-          return a.name.localeCompare(
-            b.name,
-            "ja"
-          );
-        });
+        );
     }, [
       clients,
       memberSales,
@@ -693,6 +869,11 @@ export default function ClientsPage() {
           const clientIds =
             new Set(
               rows
+                .filter(
+                  (row) =>
+                    row.visit_type ===
+                    "existing"
+                )
                 .map(
                   (row) =>
                     row.client_id
@@ -767,6 +948,27 @@ export default function ClientsPage() {
   const selectedClientVisits =
     selectedClientSales.length;
 
+  const selectedExistingVisits =
+    selectedClientSales.filter(
+      (row) =>
+        row.visit_type ===
+        "existing"
+    ).length;
+
+  const selectedInhouseVisits =
+    selectedClientSales.filter(
+      (row) =>
+        row.visit_type ===
+        "inhouse"
+    ).length;
+
+  const selectedCompanionVisits =
+    selectedClientSales.filter(
+      (row) =>
+        row.visit_type ===
+        "companion"
+    ).length;
+
   const selectedClientLatest =
     selectedClientSales.length >
     0
@@ -815,9 +1017,7 @@ export default function ClientsPage() {
     );
 
   useEffect(() => {
-    if (
-      selectedClientId
-    ) {
+    if (selectedClientId) {
       setClientMustInput(
         selectedMustSales > 0
           ? String(
@@ -867,7 +1067,9 @@ export default function ClientsPage() {
         duplicate.id
       );
 
-      setNewClientName("");
+      setNewClientName(
+        ""
+      );
 
       setMessage(
         "登録済みのクライアントを開きました"
@@ -922,10 +1124,13 @@ export default function ClientsPage() {
       );
 
       setSaving(false);
+
       return;
     }
 
-    setNewClientName("");
+    setNewClientName(
+      ""
+    );
 
     if (data?.id) {
       setSelectedClientId(
@@ -952,7 +1157,8 @@ export default function ClientsPage() {
 
     const numericValue =
       Number(
-        clientMustInput || 0
+        clientMustInput ||
+          0
       );
 
     if (
@@ -973,9 +1179,12 @@ export default function ClientsPage() {
     setMessage("");
 
     if (
-      numericValue === 0
+      numericValue ===
+      0
     ) {
-      if (selectedMustTarget) {
+      if (
+        selectedMustTarget
+      ) {
         const {
           error,
         } = await supabase
@@ -994,11 +1203,14 @@ export default function ClientsPage() {
           );
 
           setSaving(false);
+
           return;
         }
       }
 
-      setClientMustInput("");
+      setClientMustInput(
+        ""
+      );
 
       await load(false);
 
@@ -1007,6 +1219,7 @@ export default function ClientsPage() {
       );
 
       setSaving(false);
+
       return;
     }
 
@@ -1042,6 +1255,7 @@ export default function ClientsPage() {
       );
 
       setSaving(false);
+
       return;
     }
 
@@ -1129,6 +1343,9 @@ export default function ClientsPage() {
 
         visit_date:
           saleDate,
+
+        visit_type:
+          saleVisitType,
       });
 
     if (error) {
@@ -1137,10 +1354,17 @@ export default function ClientsPage() {
       );
 
       setSaving(false);
+
       return;
     }
 
-    setSaleAmount("");
+    setSaleAmount(
+      ""
+    );
+
+    setSaleVisitType(
+      "existing"
+    );
 
     await load(false);
 
@@ -1168,7 +1392,14 @@ export default function ClientsPage() {
       row.visit_date
     );
 
-    setErrorMessage("");
+    setEditVisitType(
+      row.visit_type ??
+        "existing"
+    );
+
+    setErrorMessage(
+      ""
+    );
   }
 
   function cancelEdit() {
@@ -1234,6 +1465,9 @@ export default function ClientsPage() {
         visit_date:
           editVisitDate,
 
+        visit_type:
+          editVisitType,
+
         updated_at:
           new Date().toISOString(),
       })
@@ -1248,6 +1482,7 @@ export default function ClientsPage() {
       );
 
       setSaving(false);
+
       return;
     }
 
@@ -1306,6 +1541,7 @@ export default function ClientsPage() {
       );
 
       setSaving(false);
+
       return;
     }
 
@@ -1517,6 +1753,10 @@ export default function ClientsPage() {
                     )}
                   />
                 </div>
+
+                <p className="mt-2 text-xs text-zinc-600">
+                  ※ 顧客数は「既存」のみ。場内・新規お連れ様は含みません。
+                </p>
               </section>
 
               <section className="mt-4 rounded-3xl border border-zinc-800 bg-zinc-950 p-5">
@@ -1524,21 +1764,19 @@ export default function ClientsPage() {
                   MUST SALES
                 </p>
 
-                <div className="mt-2 flex items-end justify-between">
-                  <div>
-                    <p className="text-sm text-zinc-400">
-                      個人必達
-                    </p>
+                <div className="mt-2">
+                  <p className="text-sm text-zinc-400">
+                    個人必達
+                  </p>
 
-                    <p className="mt-1 text-2xl font-bold">
-                      {individualMustSales >
-                      0
-                        ? yen(
-                            individualMustSales
-                          )
-                        : "未設定"}
-                    </p>
-                  </div>
+                  <p className="mt-1 text-2xl font-bold">
+                    {individualMustSales >
+                    0
+                      ? yen(
+                          individualMustSales
+                        )
+                      : "未設定"}
+                  </p>
                 </div>
 
                 <div className="mt-4 grid grid-cols-2 gap-3">
@@ -1571,6 +1809,10 @@ export default function ClientsPage() {
                     }
                   />
                 </div>
+
+                <p className="mt-3 text-xs text-zinc-600">
+                  ※ 必達には既存・場内・新規お連れ様の売上すべてを含みます。
+                </p>
               </section>
 
               {!isCast && (
@@ -1690,6 +1932,15 @@ export default function ClientsPage() {
                                 </p>
                               )}
 
+                              {client.visits >
+                                0 && (
+                                <p className="mt-1 text-xs text-zinc-600">
+                                  {client.countsAsClient
+                                    ? "顧客数対象"
+                                    : "顧客数対象外"}
+                                </p>
+                              )}
+
                               {client.mustSales >
                                 0 && (
                                 <p className="mt-2 text-xs text-zinc-400">
@@ -1753,7 +2004,9 @@ export default function ClientsPage() {
                   null
                 );
 
-                setMessage("");
+                setMessage(
+                  ""
+                );
               }}
               className="mb-4 text-sm text-zinc-500"
             >
@@ -1766,7 +2019,9 @@ export default function ClientsPage() {
               </p>
 
               <h2 className="mt-2 text-3xl font-bold">
-                {selectedClient.name}
+                {
+                  selectedClient.name
+                }
               </h2>
 
               <div className="mt-4 grid grid-cols-3 gap-2">
@@ -1794,6 +2049,23 @@ export default function ClientsPage() {
                           )
                       : "－"
                   }
+                />
+              </div>
+
+              <div className="mt-3 grid grid-cols-3 gap-2">
+                <SmallBox
+                  label="既存"
+                  value={`${selectedExistingVisits}回`}
+                />
+
+                <SmallBox
+                  label="場内"
+                  value={`${selectedInhouseVisits}回`}
+                />
+
+                <SmallBox
+                  label="お連れ様"
+                  value={`${selectedCompanionVisits}回`}
                 />
               </div>
             </section>
@@ -1858,6 +2130,10 @@ export default function ClientsPage() {
                 />
               </div>
 
+              <p className="mt-3 text-xs text-zinc-600">
+                必達実績には来店種別を問わず、すべての売上を含みます。
+              </p>
+
               {!isCast && (
                 <div className="mt-5 border-t border-zinc-800 pt-5">
                   <label className="block">
@@ -1914,7 +2190,7 @@ export default function ClientsPage() {
                 </h2>
 
                 <p className="mt-1 text-sm text-zinc-500">
-                  日付と金額だけ入力
+                  日付・金額・来店種別
                 </p>
 
                 <div className="mt-5 space-y-3">
@@ -1946,6 +2222,42 @@ export default function ClientsPage() {
                     placeholder="売上金額"
                     className="w-full rounded-2xl border border-zinc-800 bg-black px-4 py-3 text-white"
                   />
+
+                  <label className="block">
+                    <span className="text-xs text-zinc-500">
+                      来店種別
+                    </span>
+
+                    <select
+                      value={
+                        saleVisitType
+                      }
+                      onChange={(e) =>
+                        setSaleVisitType(
+                          e.target
+                            .value as VisitType
+                        )
+                      }
+                      className="mt-2 w-full rounded-2xl border border-zinc-800 bg-black px-4 py-3 text-white"
+                    >
+                      <option value="existing">
+                        既存
+                      </option>
+
+                      <option value="inhouse">
+                        場内
+                      </option>
+
+                      <option value="companion">
+                        新規（お連れ様）
+                      </option>
+                    </select>
+                  </label>
+
+                  <p className="text-xs leading-5 text-zinc-600">
+                    「既存」だけ顧客数にカウント。
+                    場内・新規お連れ様も売上と必達には含まれます。
+                  </p>
 
                   <button
                     onClick={
@@ -1998,9 +2310,7 @@ export default function ClientsPage() {
                               }
                               onChange={(e) =>
                                 setEditVisitDate(
-                                  e
-                                    .target
-                                    .value
+                                  e.target.value
                                 )
                               }
                               className="w-full rounded-xl border border-zinc-700 bg-black px-3 py-3"
@@ -2015,13 +2325,36 @@ export default function ClientsPage() {
                               }
                               onChange={(e) =>
                                 setEditAmount(
-                                  e
-                                    .target
-                                    .value
+                                  e.target.value
                                 )
                               }
                               className="w-full rounded-xl border border-zinc-700 bg-black px-3 py-3"
                             />
+
+                            <select
+                              value={
+                                editVisitType
+                              }
+                              onChange={(e) =>
+                                setEditVisitType(
+                                  e.target
+                                    .value as VisitType
+                                )
+                              }
+                              className="w-full rounded-xl border border-zinc-700 bg-black px-3 py-3"
+                            >
+                              <option value="existing">
+                                既存
+                              </option>
+
+                              <option value="inhouse">
+                                場内
+                              </option>
+
+                              <option value="companion">
+                                新規（お連れ様）
+                              </option>
+                            </select>
 
                             <div className="grid grid-cols-2 gap-2">
                               <button
@@ -2051,12 +2384,20 @@ export default function ClientsPage() {
                         ) : (
                           <>
                             <div className="flex items-center justify-between gap-3">
-                              <p className="font-bold">
-                                {row.visit_date.replaceAll(
-                                  "-",
-                                  "/"
-                                )}
-                              </p>
+                              <div>
+                                <p className="font-bold">
+                                  {row.visit_date.replaceAll(
+                                    "-",
+                                    "/"
+                                  )}
+                                </p>
+
+                                <p className="mt-1 text-xs text-zinc-500">
+                                  {visitTypeLabel(
+                                    row.visit_type
+                                  )}
+                                </p>
+                              </div>
 
                               <p className="text-xl font-bold">
                                 {yen(
@@ -2119,6 +2460,26 @@ function SummaryBox({
       </p>
 
       <p className="mt-2 break-words text-base font-bold">
+        {value}
+      </p>
+    </div>
+  );
+}
+
+function SmallBox({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="rounded-xl bg-zinc-900 p-3 text-center">
+      <p className="text-[10px] text-zinc-500">
+        {label}
+      </p>
+
+      <p className="mt-1 text-sm font-bold">
         {value}
       </p>
     </div>
