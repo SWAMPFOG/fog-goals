@@ -36,6 +36,18 @@ type ClientSale = {
   visit_date: string;
 };
 
+type ClientMustTarget = {
+  id: string;
+  client_id: string;
+  target_month: string;
+  must_sales: number;
+};
+
+type MemberGoal = {
+  member_id: string;
+  must_sales: number | null;
+};
+
 function currentMonth() {
   const d = new Date();
 
@@ -68,6 +80,14 @@ function yen(value: number) {
   return `¥${Number(value || 0).toLocaleString("ja-JP")}`;
 }
 
+function percent(current: number, target: number) {
+  if (target <= 0) {
+    return 0;
+  }
+
+  return Math.round((current / target) * 1000) / 10;
+}
+
 export default function ClientsPage() {
   const router = useRouter();
   const [supabase] = useState(() => createClient());
@@ -83,6 +103,12 @@ export default function ClientsPage() {
 
   const [sales, setSales] =
     useState<ClientSale[]>([]);
+
+  const [mustTargets, setMustTargets] =
+    useState<ClientMustTarget[]>([]);
+
+  const [memberGoals, setMemberGoals] =
+    useState<MemberGoal[]>([]);
 
   const [month, setMonth] =
     useState(currentMonth());
@@ -105,6 +131,9 @@ export default function ClientsPage() {
 
   const [saleDate, setSaleDate] =
     useState(defaultDateForMonth(currentMonth()));
+
+  const [clientMustInput, setClientMustInput] =
+    useState("");
 
   const [
     editingSaleId,
@@ -135,9 +164,7 @@ export default function ClientsPage() {
     profile?.role === "cast" ||
     profile?.role === "member";
 
-  async function load(
-    showLoader = true
-  ) {
+  async function load(showLoader = true) {
     if (showLoader) {
       setLoading(true);
     }
@@ -164,10 +191,7 @@ export default function ClientsPage() {
       .eq("id", user.id)
       .maybeSingle();
 
-    if (
-      profileError ||
-      !profileData
-    ) {
+    if (profileError || !profileData) {
       setErrorMessage(
         profileError?.message ??
           "プロフィールが見つかりません"
@@ -180,8 +204,7 @@ export default function ClientsPage() {
       return;
     }
 
-    const p =
-      profileData as Profile;
+    const p = profileData as Profile;
 
     setProfile(p);
 
@@ -210,6 +233,8 @@ export default function ClientsPage() {
     const [
       salesResult,
       clientsResult,
+      mustResult,
+      goalsResult,
     ] = await Promise.all([
       supabase
         .from("client_sales")
@@ -237,6 +262,28 @@ export default function ClientsPage() {
           "id, member_id, team_id, name"
         )
         .order("name"),
+
+      supabase
+        .from(
+          "client_monthly_must_targets"
+        )
+        .select(
+          "id, client_id, target_month, must_sales"
+        )
+        .eq(
+          "target_month",
+          startDate
+        ),
+
+      supabase
+        .from("monthly_goals")
+        .select(
+          "member_id, must_sales"
+        )
+        .eq(
+          "target_month",
+          startDate
+        ),
     ]);
 
     if (salesResult.error) {
@@ -263,6 +310,30 @@ export default function ClientsPage() {
       return;
     }
 
+    if (mustResult.error) {
+      setErrorMessage(
+        mustResult.error.message
+      );
+
+      if (showLoader) {
+        setLoading(false);
+      }
+
+      return;
+    }
+
+    if (goalsResult.error) {
+      setErrorMessage(
+        goalsResult.error.message
+      );
+
+      if (showLoader) {
+        setLoading(false);
+      }
+
+      return;
+    }
+
     const loadedSales =
       (salesResult.data ??
         []) as ClientSale[];
@@ -272,7 +343,20 @@ export default function ClientsPage() {
         []) as Client[];
 
     setSales(loadedSales);
-    setClients(loadedClients);
+
+    setClients(
+      loadedClients
+    );
+
+    setMustTargets(
+      (mustResult.data ??
+        []) as ClientMustTarget[]
+    );
+
+    setMemberGoals(
+      (goalsResult.data ??
+        []) as MemberGoal[]
+    );
 
     if (cast) {
       setMembers([]);
@@ -289,7 +373,10 @@ export default function ClientsPage() {
         .select(
           "id, name, team_id"
         )
-        .eq("is_active", true)
+        .eq(
+          "is_active",
+          true
+        )
         .order(
           "display_order"
         );
@@ -332,11 +419,18 @@ export default function ClientsPage() {
 
   useEffect(() => {
     setMessage("");
+
     setSaleDate(
       defaultDateForMonth(
         month
       )
     );
+
+    setSelectedClientId(
+      null
+    );
+
+    setClientMustInput("");
 
     load();
 
@@ -377,19 +471,20 @@ export default function ClientsPage() {
 
   const monthClientCount =
     useMemo(() => {
-      const ids = new Set(
-        memberSales
-          .map(
-            (row) =>
-              row.client_id
-          )
-          .filter(
-            (
-              id
-            ): id is string =>
-              !!id
-          )
-      );
+      const ids =
+        new Set(
+          memberSales
+            .map(
+              (row) =>
+                row.client_id
+            )
+            .filter(
+              (
+                id
+              ): id is string =>
+                !!id
+            )
+        );
 
       return ids.size;
     }, [memberSales]);
@@ -413,6 +508,15 @@ export default function ClientsPage() {
             monthClientCount
         )
       : 0;
+
+  const individualMustSales =
+    Number(
+      memberGoals.find(
+        (row) =>
+          row.member_id ===
+          activeMemberId
+      )?.must_sales ?? 0
+    );
 
   const memberClients =
     useMemo(() => {
@@ -439,7 +543,8 @@ export default function ClientsPage() {
               (sum, row) =>
                 sum +
                 Number(
-                  row.amount ?? 0
+                  row.amount ??
+                    0
                 ),
               0
             );
@@ -455,12 +560,50 @@ export default function ClientsPage() {
                   .reverse()[0]
               : null;
 
+          const mustTarget =
+            mustTargets.find(
+              (row) =>
+                row.client_id ===
+                client.id
+            );
+
+          const mustSales =
+            Number(
+              mustTarget?.must_sales ??
+                0
+            );
+
           return {
             ...client,
+
             total,
+
             visits:
               rows.length,
+
             latest,
+
+            mustSales,
+
+            mustRate:
+              percent(
+                total,
+                mustSales
+              ),
+
+            mustRemaining:
+              Math.max(
+                0,
+                mustSales -
+                  total
+              ),
+
+            mustOver:
+              Math.max(
+                0,
+                total -
+                  mustSales
+              ),
           };
         })
         .sort((a, b) => {
@@ -497,7 +640,33 @@ export default function ClientsPage() {
       clients,
       memberSales,
       activeMemberId,
+      mustTargets,
     ]);
+
+  const assignedMustSales =
+    memberClients.reduce(
+      (sum, client) =>
+        sum +
+        Number(
+          client.mustSales ??
+            0
+        ),
+      0
+    );
+
+  const unassignedMustSales =
+    Math.max(
+      0,
+      individualMustSales -
+        assignedMustSales
+    );
+
+  const overAssignedMustSales =
+    Math.max(
+      0,
+      assignedMustSales -
+        individualMustSales
+    );
 
   const memberSummaries =
     useMemo(() => {
@@ -515,7 +684,8 @@ export default function ClientsPage() {
               (sum, row) =>
                 sum +
                 Number(
-                  row.amount ?? 0
+                  row.amount ??
+                    0
                 ),
               0
             );
@@ -537,7 +707,9 @@ export default function ClientsPage() {
 
           return {
             ...member,
+
             total,
+
             clientCount:
               clientIds.size,
           };
@@ -547,7 +719,10 @@ export default function ClientsPage() {
             b.total -
             a.total
         );
-    }, [members, sales]);
+    }, [
+      members,
+      sales,
+    ]);
 
   const selectedClient =
     useMemo(() => {
@@ -603,6 +778,58 @@ export default function ClientsPage() {
           .sort()
           .reverse()[0]
       : null;
+
+  const selectedMustTarget =
+    selectedClient
+      ? mustTargets.find(
+          (row) =>
+            row.client_id ===
+            selectedClient.id
+        ) ?? null
+      : null;
+
+  const selectedMustSales =
+    Number(
+      selectedMustTarget?.must_sales ??
+        0
+    );
+
+  const selectedMustRate =
+    percent(
+      selectedClientTotal,
+      selectedMustSales
+    );
+
+  const selectedMustRemaining =
+    Math.max(
+      0,
+      selectedMustSales -
+        selectedClientTotal
+    );
+
+  const selectedMustOver =
+    Math.max(
+      0,
+      selectedClientTotal -
+        selectedMustSales
+    );
+
+  useEffect(() => {
+    if (
+      selectedClientId
+    ) {
+      setClientMustInput(
+        selectedMustSales > 0
+          ? String(
+              selectedMustSales
+            )
+          : ""
+      );
+    }
+  }, [
+    selectedClientId,
+    selectedMustSales,
+  ]);
 
   async function addClient() {
     if (
@@ -678,8 +905,10 @@ export default function ClientsPage() {
       .insert({
         member_id:
           activeMemberId,
+
         team_id:
           targetMember.team_id,
+
         name,
       })
       .select(
@@ -708,6 +937,118 @@ export default function ClientsPage() {
 
     setMessage(
       "クライアントを登録しました"
+    );
+
+    setSaving(false);
+  }
+
+  async function saveClientMust() {
+    if (
+      !selectedClient ||
+      isCast
+    ) {
+      return;
+    }
+
+    const numericValue =
+      Number(
+        clientMustInput || 0
+      );
+
+    if (
+      !Number.isFinite(
+        numericValue
+      ) ||
+      numericValue < 0
+    ) {
+      setErrorMessage(
+        "必達金額を確認してください"
+      );
+
+      return;
+    }
+
+    setSaving(true);
+    setErrorMessage("");
+    setMessage("");
+
+    if (
+      numericValue === 0
+    ) {
+      if (selectedMustTarget) {
+        const {
+          error,
+        } = await supabase
+          .from(
+            "client_monthly_must_targets"
+          )
+          .delete()
+          .eq(
+            "id",
+            selectedMustTarget.id
+          );
+
+        if (error) {
+          setErrorMessage(
+            error.message
+          );
+
+          setSaving(false);
+          return;
+        }
+      }
+
+      setClientMustInput("");
+
+      await load(false);
+
+      setMessage(
+        "クライアント必達を解除しました"
+      );
+
+      setSaving(false);
+      return;
+    }
+
+    const {
+      error,
+    } = await supabase
+      .from(
+        "client_monthly_must_targets"
+      )
+      .upsert(
+        {
+          client_id:
+            selectedClient.id,
+
+          target_month:
+            `${month}-01`,
+
+          must_sales:
+            numericValue,
+
+          updated_at:
+            new Date().toISOString(),
+        },
+        {
+          onConflict:
+            "client_id,target_month",
+        }
+      );
+
+    if (error) {
+      setErrorMessage(
+        error.message
+      );
+
+      setSaving(false);
+      return;
+    }
+
+    await load(false);
+
+    setMessage(
+      "クライアント必達を保存しました"
     );
 
     setSaving(false);
@@ -764,30 +1105,31 @@ export default function ClientsPage() {
     setErrorMessage("");
     setMessage("");
 
-    const { error } =
-      await supabase
-        .from(
-          "client_sales"
-        )
-        .insert({
-          client_id:
-            selectedClient.id,
+    const {
+      error,
+    } = await supabase
+      .from(
+        "client_sales"
+      )
+      .insert({
+        client_id:
+          selectedClient.id,
 
-          member_id:
-            selectedClient.member_id,
+        member_id:
+          selectedClient.member_id,
 
-          team_id:
-            selectedClient.team_id,
+        team_id:
+          selectedClient.team_id,
 
-          client_name:
-            selectedClient.name,
+        client_name:
+          selectedClient.name,
 
-          amount:
-            numericAmount,
+        amount:
+          numericAmount,
 
-          visit_date:
-            saleDate,
-        });
+        visit_date:
+          saleDate,
+      });
 
     if (error) {
       setErrorMessage(
@@ -879,25 +1221,26 @@ export default function ClientsPage() {
     setSaving(true);
     setErrorMessage("");
 
-    const { error } =
-      await supabase
-        .from(
-          "client_sales"
-        )
-        .update({
-          amount:
-            numericAmount,
+    const {
+      error,
+    } = await supabase
+      .from(
+        "client_sales"
+      )
+      .update({
+        amount:
+          numericAmount,
 
-          visit_date:
-            editVisitDate,
+        visit_date:
+          editVisitDate,
 
-          updated_at:
-            new Date().toISOString(),
-        })
-        .eq(
-          "id",
-          row.id
-        );
+        updated_at:
+          new Date().toISOString(),
+      })
+      .eq(
+        "id",
+        row.id
+      );
 
     if (error) {
       setErrorMessage(
@@ -945,16 +1288,17 @@ export default function ClientsPage() {
     setSaving(true);
     setErrorMessage("");
 
-    const { error } =
-      await supabase
-        .from(
-          "client_sales"
-        )
-        .delete()
-        .eq(
-          "id",
-          row.id
-        );
+    const {
+      error,
+    } = await supabase
+      .from(
+        "client_sales"
+      )
+      .delete()
+      .eq(
+        "id",
+        row.id
+      );
 
     if (error) {
       setErrorMessage(
@@ -1175,6 +1519,60 @@ export default function ClientsPage() {
                 </div>
               </section>
 
+              <section className="mt-4 rounded-3xl border border-zinc-800 bg-zinc-950 p-5">
+                <p className="text-xs text-zinc-500">
+                  MUST SALES
+                </p>
+
+                <div className="mt-2 flex items-end justify-between">
+                  <div>
+                    <p className="text-sm text-zinc-400">
+                      個人必達
+                    </p>
+
+                    <p className="mt-1 text-2xl font-bold">
+                      {individualMustSales >
+                      0
+                        ? yen(
+                            individualMustSales
+                          )
+                        : "未設定"}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-4 grid grid-cols-2 gap-3">
+                  <SummaryBox
+                    label="配分済み"
+                    value={yen(
+                      assignedMustSales
+                    )}
+                  />
+
+                  <SummaryBox
+                    label={
+                      overAssignedMustSales >
+                      0
+                        ? "配分超過"
+                        : "未配分"
+                    }
+                    value={
+                      individualMustSales >
+                      0
+                        ? overAssignedMustSales >
+                          0
+                          ? `+${yen(
+                              overAssignedMustSales
+                            )}`
+                          : yen(
+                              unassignedMustSales
+                            )
+                        : "－"
+                    }
+                  />
+                </div>
+              </section>
+
               {!isCast && (
                 <section className="mt-6 rounded-3xl border border-zinc-800 bg-zinc-950 p-5">
                   <p className="text-xs text-zinc-500">
@@ -1190,9 +1588,7 @@ export default function ClientsPage() {
                       value={
                         newClientName
                       }
-                      onChange={(
-                        e
-                      ) =>
+                      onChange={(e) =>
                         setNewClientName(
                           e.target.value
                         )
@@ -1247,9 +1643,7 @@ export default function ClientsPage() {
                     </div>
                   ) : (
                     memberClients.map(
-                      (
-                        client
-                      ) => (
+                      (client) => (
                         <button
                           key={
                             client.id
@@ -1270,7 +1664,7 @@ export default function ClientsPage() {
                           className="w-full rounded-2xl border border-zinc-800 bg-zinc-950 p-4 text-left"
                         >
                           <div className="flex items-start justify-between gap-3">
-                            <div>
+                            <div className="min-w-0">
                               <p className="font-bold">
                                 {
                                   client.name
@@ -1295,14 +1689,43 @@ export default function ClientsPage() {
                                   今月未来店
                                 </p>
                               )}
+
+                              {client.mustSales >
+                                0 && (
+                                <p className="mt-2 text-xs text-zinc-400">
+                                  必達{" "}
+                                  {yen(
+                                    client.mustSales
+                                  )}
+                                  {" ・ "}
+                                  {
+                                    client.mustRate
+                                  }
+                                  %
+                                </p>
+                              )}
                             </div>
 
-                            <div className="text-right">
+                            <div className="shrink-0 text-right">
                               <p className="font-bold">
                                 {yen(
                                   client.total
                                 )}
                               </p>
+
+                              {client.mustSales >
+                                0 && (
+                                <p className="mt-1 text-xs text-zinc-500">
+                                  {client.mustOver >
+                                  0
+                                    ? `+${yen(
+                                        client.mustOver
+                                      )}`
+                                    : `残り ${yen(
+                                        client.mustRemaining
+                                      )}`}
+                                </p>
+                              )}
 
                               <p className="mt-1 text-xs text-zinc-500">
                                 →
@@ -1375,6 +1798,111 @@ export default function ClientsPage() {
               </div>
             </section>
 
+            <section className="mt-6 rounded-3xl border border-zinc-700 bg-zinc-950 p-5">
+              <p className="text-xs text-zinc-500">
+                CLIENT MUST
+              </p>
+
+              <div className="mt-2 flex items-end justify-between gap-3">
+                <div>
+                  <p className="text-sm text-zinc-400">
+                    クライアント必達
+                  </p>
+
+                  <p className="mt-1 text-3xl font-bold">
+                    {selectedMustSales >
+                    0
+                      ? yen(
+                          selectedMustSales
+                        )
+                      : "未設定"}
+                  </p>
+                </div>
+
+                <p className="text-2xl font-bold">
+                  {selectedMustSales >
+                  0
+                    ? `${selectedMustRate}%`
+                    : "－"}
+                </p>
+              </div>
+
+              <div className="mt-4 grid grid-cols-2 gap-3">
+                <SummaryBox
+                  label="現在"
+                  value={yen(
+                    selectedClientTotal
+                  )}
+                />
+
+                <SummaryBox
+                  label={
+                    selectedMustOver >
+                    0
+                      ? "必達超過"
+                      : "残り"
+                  }
+                  value={
+                    selectedMustSales <=
+                    0
+                      ? "－"
+                      : selectedMustOver >
+                          0
+                        ? `+${yen(
+                            selectedMustOver
+                          )}`
+                        : yen(
+                            selectedMustRemaining
+                          )
+                  }
+                />
+              </div>
+
+              {!isCast && (
+                <div className="mt-5 border-t border-zinc-800 pt-5">
+                  <label className="block">
+                    <span className="text-xs text-zinc-500">
+                      このクライアントの必達
+                    </span>
+
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      min="0"
+                      value={
+                        clientMustInput
+                      }
+                      onChange={(e) =>
+                        setClientMustInput(
+                          e.target.value
+                        )
+                      }
+                      placeholder="300000"
+                      className="mt-2 w-full rounded-2xl border border-zinc-800 bg-black px-4 py-3 text-white"
+                    />
+                  </label>
+
+                  <p className="mt-2 text-xs text-zinc-600">
+                    0で必達解除
+                  </p>
+
+                  <button
+                    onClick={
+                      saveClientMust
+                    }
+                    disabled={
+                      saving
+                    }
+                    className="mt-4 w-full rounded-2xl bg-white py-4 font-bold text-black disabled:opacity-50"
+                  >
+                    {saving
+                      ? "保存中..."
+                      : "必達を保存"}
+                  </button>
+                </div>
+              )}
+            </section>
+
             {!isCast && (
               <section className="mt-6 rounded-3xl border border-zinc-800 bg-zinc-950 p-5">
                 <p className="text-xs text-zinc-500">
@@ -1395,9 +1923,7 @@ export default function ClientsPage() {
                     value={
                       saleDate
                     }
-                    onChange={(
-                      e
-                    ) =>
+                    onChange={(e) =>
                       setSaleDate(
                         e.target.value
                       )
@@ -1412,9 +1938,7 @@ export default function ClientsPage() {
                     value={
                       saleAmount
                     }
-                    onChange={(
-                      e
-                    ) =>
+                    onChange={(e) =>
                       setSaleAmount(
                         e.target.value
                       )
@@ -1472,9 +1996,7 @@ export default function ClientsPage() {
                               value={
                                 editVisitDate
                               }
-                              onChange={(
-                                e
-                              ) =>
+                              onChange={(e) =>
                                 setEditVisitDate(
                                   e
                                     .target
@@ -1491,9 +2013,7 @@ export default function ClientsPage() {
                               value={
                                 editAmount
                               }
-                              onChange={(
-                                e
-                              ) =>
+                              onChange={(e) =>
                                 setEditAmount(
                                   e
                                     .target
@@ -1531,14 +2051,12 @@ export default function ClientsPage() {
                         ) : (
                           <>
                             <div className="flex items-center justify-between gap-3">
-                              <div>
-                                <p className="font-bold">
-                                  {row.visit_date.replaceAll(
-                                    "-",
-                                    "/"
-                                  )}
-                                </p>
-                              </div>
+                              <p className="font-bold">
+                                {row.visit_date.replaceAll(
+                                  "-",
+                                  "/"
+                                )}
+                              </p>
 
                               <p className="text-xl font-bold">
                                 {yen(
