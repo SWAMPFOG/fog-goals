@@ -6,8 +6,17 @@ import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
 import { canEditTeamGoal, normalizeRole } from "@/utils/permissions";
 
-type Team = { id: string; name: string; department_id: string | null };
-type Member = { id: string; name: string; display_order: number };
+type Team = {
+  id: string;
+  name: string;
+  department_id: string | null;
+};
+
+type Member = {
+  id: string;
+  name: string;
+  display_order: number;
+};
 
 type DailyResult = {
   member_id: string;
@@ -125,7 +134,8 @@ export default function TeamDetailPage() {
 
   const [supabase] = useState(() => createClient());
 
-  const [team, setTeam] = useState<Team | null>(null);
+  const [team, setTeam] =
+    useState<Team | null>(null);
 
   const [teamName, setTeamName] =
     useState("");
@@ -262,10 +272,7 @@ export default function TeamDetailPage() {
         .maybeSingle();
 
       if (profileError) {
-        setErrorMessage(
-          profileError.message
-        );
-
+        setErrorMessage(profileError.message);
         setLoading(false);
         return;
       }
@@ -304,7 +311,6 @@ export default function TeamDetailPage() {
           setErrorMessage(
             ownTeamError.message
           );
-
           setLoading(false);
           return;
         }
@@ -370,9 +376,7 @@ export default function TeamDetailPage() {
           ),
 
         supabase
-          .from(
-            "daily_results"
-          )
+          .from("daily_results")
           .select(
             "member_id, sales, champagne_count, visit_count, repeat_count, first_contact_count, send_count, inhouse_count"
           )
@@ -390,9 +394,7 @@ export default function TeamDetailPage() {
           ),
 
         supabase
-          .from(
-            "team_goals"
-          )
+          .from("team_goals")
           .select(
             "id, target_sales, champagne_target, visit_count_target"
           )
@@ -407,9 +409,7 @@ export default function TeamDetailPage() {
           .maybeSingle(),
 
         supabase
-          .from(
-            "monthly_goals"
-          )
+          .from("monthly_goals")
           .select(
             "member_id, must_sales, target_sales, champagne_target, visit_count_target"
           )
@@ -434,7 +434,6 @@ export default function TeamDetailPage() {
         setErrorMessage(
           firstError.message
         );
-
         setLoading(false);
         return;
       }
@@ -582,7 +581,6 @@ export default function TeamDetailPage() {
           setErrorMessage(
             rpcError.message
           );
-
           setLoading(false);
           return;
         }
@@ -667,11 +665,9 @@ export default function TeamDetailPage() {
           error:
             clientSalesError,
         } = await supabase
-          .from(
-            "client_sales"
-          )
+          .from("client_sales")
           .select(
-            "member_id, client_id, amount"
+            "member_id, client_id, amount, visit_type"
           )
           .eq(
             "team_id",
@@ -692,7 +688,6 @@ export default function TeamDetailPage() {
           setErrorMessage(
             clientSalesError.message
           );
-
           setLoading(false);
           return;
         }
@@ -703,7 +698,7 @@ export default function TeamDetailPage() {
             Set<string>
           >();
 
-        let existingSales = 0;
+        let mustSalesTotal = 0;
 
         for (
           const row of
@@ -717,10 +712,17 @@ export default function TeamDetailPage() {
             continue;
           }
 
-          existingSales +=
+          mustSalesTotal +=
             Number(
               row.amount ?? 0
             );
+
+          if (
+            row.visit_type !==
+            "existing"
+          ) {
+            continue;
+          }
 
           if (
             !countMap.has(
@@ -827,11 +829,11 @@ export default function TeamDetailPage() {
             teamMust,
 
           team_existing_client_sales:
-            existingSales,
+            mustSalesTotal,
 
           team_must_rate:
             rawRate(
-              existingSales,
+              mustSalesTotal,
               teamMust
             ),
 
@@ -839,7 +841,7 @@ export default function TeamDetailPage() {
             Math.max(
               0,
               teamMust -
-                existingSales
+                mustSalesTotal
             ),
         });
       }
@@ -1380,7 +1382,6 @@ export default function TeamDetailPage() {
       setTeamNameMessage(
         "チーム名を入力してください"
       );
-
       return;
     }
 
@@ -1393,8 +1394,7 @@ export default function TeamDetailPage() {
     } = await supabase
       .from("teams")
       .update({
-        name:
-          nextName,
+        name: nextName,
       })
       .eq(
         "id",
@@ -1415,22 +1415,14 @@ export default function TeamDetailPage() {
     }
 
     setTeam(data);
-
-    setTeamName(
-      data.name
-    );
-
-    setEditingTeamName(
-      false
-    );
+    setTeamName(data.name);
+    setEditingTeamName(false);
 
     setTeamNameMessage(
       "チーム名を変更しました"
     );
 
-    setSavingTeamName(
-      false
-    );
+    setSavingTeamName(false);
   }
 
   async function saveGoal() {
@@ -1443,29 +1435,22 @@ export default function TeamDetailPage() {
     setErrorMessage("");
 
     const payload = {
-      team_id:
-        teamId,
-
+      team_id: teamId,
       target_month:
         `${month}-01`,
-
       target_sales:
         Number(
           targetSales || 0
         ),
-
       champagne_target:
         Number(
           champagneTarget ||
             0
         ),
-
       visit_count_target:
         Number(
-          visitTarget ||
-            0
+          visitTarget || 0
         ),
-
       updated_at:
         new Date().toISOString(),
     };
@@ -1474,9 +1459,7 @@ export default function TeamDetailPage() {
       data,
       error,
     } = await supabase
-      .from(
-        "team_goals"
-      )
+      .from("team_goals")
       .upsert(
         payload,
         {
@@ -1499,11 +1482,9 @@ export default function TeamDetailPage() {
     }
 
     setGoal(data);
-
     setMessage(
       "保存しました"
     );
-
     setEditing(false);
     setSaving(false);
   }
@@ -1550,168 +1531,94 @@ export default function TeamDetailPage() {
   const rankingTabs: {
     key: string;
     label: string;
-    getValue:
-      (
-        m: MemberStat
-      ) => number;
-
-    format:
-      (
-        v: number
-      ) => string;
+    getValue: (
+      m: MemberStat
+    ) => number;
+    format: (
+      v: number
+    ) => string;
   }[] = [
     {
-      key:
-        "sales",
-
-      label:
-        "売上",
-
-      getValue:
-        (m) =>
-          m.sales,
-
-      format:
-        (v) =>
-          canViewSalesAmount
-            ? yen(v)
-            : "",
+      key: "sales",
+      label: "売上",
+      getValue: (m) =>
+        m.sales,
+      format: (v) =>
+        canViewSalesAmount
+          ? yen(v)
+          : "",
     },
-
     {
-      key:
-        "champagne",
-
-      label:
-        "オリシャン",
-
-      getValue:
-        (m) =>
-          m.champagne,
-
-      format:
-        (v) =>
-          `${v}本`,
+      key: "champagne",
+      label: "オリシャン",
+      getValue: (m) =>
+        m.champagne,
+      format: (v) =>
+        `${v}本`,
     },
-
     {
-      key:
-        "visits",
-
-      label:
-        "来店",
-
-      getValue:
-        (m) =>
-          m.visits,
-
-      format:
-        (v) =>
-          `${v}組`,
+      key: "visits",
+      label: "来店",
+      getValue: (m) =>
+        m.visits,
+      format: (v) =>
+        `${v}組`,
     },
-
     {
-      key:
-        "clientCount",
-
-      label:
-        "顧客数",
-
-      getValue:
-        (m) =>
-          m.clientCount,
-
-      format:
-        (v) =>
-          `${v}人`,
+      key: "clientCount",
+      label: "顧客数",
+      getValue: (m) =>
+        m.clientCount,
+      format: (v) =>
+        `${v}人`,
     },
-
     {
-      key:
-        "sends",
-
-      label:
-        "送り",
-
-      getValue:
-        (m) =>
-          m.sends,
-
-      format:
-        (v) =>
-          `${v}件`,
+      key: "sends",
+      label: "送り",
+      getValue: (m) =>
+        m.sends,
+      format: (v) =>
+        `${v}件`,
     },
-
     {
-      key:
-        "inhouse",
-
-      label:
-        "場内",
-
-      getValue:
-        (m) =>
-          m.inhouse,
-
-      format:
-        (v) =>
-          `${v}件`,
+      key: "inhouse",
+      label: "場内",
+      getValue: (m) =>
+        m.inhouse,
+      format: (v) =>
+        `${v}件`,
     },
-
     {
-      key:
-        "inhouseRate",
-
-      label:
-        "場内率",
-
-      getValue:
-        (m) =>
-          m.inhouseRate,
-
-      format:
-        (v) =>
-          `${
-            Math.round(
-              v * 10
-            ) / 10
-          }%`,
+      key: "inhouseRate",
+      label: "場内率",
+      getValue: (m) =>
+        m.inhouseRate,
+      format: (v) =>
+        `${
+          Math.round(
+            v * 10
+          ) / 10
+        }%`,
     },
-
     {
-      key:
-        "repeats",
-
-      label:
-        "リピート",
-
-      getValue:
-        (m) =>
-          m.repeats,
-
-      format:
-        (v) =>
-          `${v}組`,
+      key: "repeats",
+      label: "リピート",
+      getValue: (m) =>
+        m.repeats,
+      format: (v) =>
+        `${v}組`,
     },
-
     {
-      key:
-        "repeatRate",
-
-      label:
-        "リピート率",
-
-      getValue:
-        (m) =>
-          m.repeatRate,
-
-      format:
-        (v) =>
-          `${
-            Math.round(
-              v * 10
-            ) / 10
-          }%`,
+      key: "repeatRate",
+      label: "リピート率",
+      getValue: (m) =>
+        m.repeatRate,
+      format: (v) =>
+        `${
+          Math.round(
+            v * 10
+          ) / 10
+        }%`,
     },
   ];
 
@@ -2215,7 +2122,7 @@ export default function TeamDetailPage() {
 
           <div className="mt-4 grid grid-cols-2 gap-3">
             <TeamResultBox
-              label="既存顧客売上"
+              label="必達対象売上"
               value={yen(
                 teamExistingClientSales
               )}
@@ -2244,19 +2151,9 @@ export default function TeamDetailPage() {
             />
           </div>
 
-          <div className="mt-4 border-t border-zinc-800 pt-4">
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-zinc-500">
-                個人必達合計
-              </span>
-
-              <span className="font-bold">
-                {yen(
-                  teamMustSales
-                )}
-              </span>
-            </div>
-          </div>
+          <p className="mt-3 text-xs text-zinc-600">
+            ※ 必達には既存・場内・新規お連れ様の売上すべてを含みます。
+          </p>
         </section>
 
         <section className="mt-6 rounded-3xl border border-zinc-800 bg-zinc-950 p-5">
@@ -2299,6 +2196,10 @@ export default function TeamDetailPage() {
               value={`${totals.inhouse}件`}
             />
           </div>
+
+          <p className="mt-3 text-xs text-zinc-600">
+            ※ 顧客数は「既存」のみ。場内・新規お連れ様は含みません。
+          </p>
         </section>
 
         <section className="mt-6 rounded-3xl border border-zinc-800 bg-zinc-950 p-5">
