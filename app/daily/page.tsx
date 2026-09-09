@@ -25,6 +25,15 @@ type DailyInput = {
   note: string;
 };
 
+type MetricKey =
+  | "sales"
+  | "champagne_count"
+  | "visit_count"
+  | "repeat_count"
+  | "first_contact_count"
+  | "send_count"
+  | "inhouse_count";
+
 type DailyDbRow = {
   member_id: string;
   team_id: string | null;
@@ -32,6 +41,7 @@ type DailyDbRow = {
   sales: number | null;
   champagne_count: number | null;
   visit_count: number | null;
+  existing_visit_count?: number | null;
   repeat_count: number | null;
   first_contact_count: number | null;
   send_count: number | null;
@@ -39,15 +49,32 @@ type DailyDbRow = {
   note: string | null;
 };
 
-type Totals = {
+type EditableDailyRow = {
+  member_id: string;
+  team_id: string | null;
+  business_date: string;
   sales: number;
   champagne_count: number;
   visit_count: number;
+  existing_visit_count: number;
   repeat_count: number;
   first_contact_count: number;
   send_count: number;
   inhouse_count: number;
+  note: string | null;
 };
+
+type Totals = Record<MetricKey, number>;
+
+const METRICS: MetricKey[] = [
+  "sales",
+  "champagne_count",
+  "visit_count",
+  "repeat_count",
+  "first_contact_count",
+  "send_count",
+  "inhouse_count",
+];
 
 const ZERO_TOTALS: Totals = {
   sales: 0,
@@ -68,7 +95,12 @@ function todayJst() {
   }).format(new Date());
 }
 
-function emptyRow(member: Member): DailyInput {
+function numberOf(value: string) {
+  const n = Number(value || 0);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function emptyInput(member: Member): DailyInput {
   return {
     member_id: member.id,
     team_id: member.team_id,
@@ -83,23 +115,13 @@ function emptyRow(member: Member): DailyInput {
   };
 }
 
-function directRow(member: Member, item: DailyDbRow): DailyInput {
-  return {
-    member_id: member.id,
-    team_id: item.team_id ?? member.team_id,
-    sales: String(Number(item.sales ?? 0)),
-    champagne_count: String(Number(item.champagne_count ?? 0)),
-    visit_count: String(Number(item.visit_count ?? 0)),
-    repeat_count: String(Number(item.repeat_count ?? 0)),
-    first_contact_count: String(Number(item.first_contact_count ?? 0)),
-    send_count: String(Number(item.send_count ?? 0)),
-    inhouse_count: String(Number(item.inhouse_count ?? 0)),
-    note: item.note ?? "",
-  };
-}
-
-function cumulativeRow(member: Member, totals: Totals): DailyInput {
-  const show = (value: number) => (value === 0 ? "" : String(value));
+function totalsToInput(
+  member: Member,
+  totals: Totals,
+  note: string
+): DailyInput {
+  const show = (value: number) =>
+    value === 0 ? "" : String(value);
 
   return {
     member_id: member.id,
@@ -111,21 +133,48 @@ function cumulativeRow(member: Member, totals: Totals): DailyInput {
     first_contact_count: show(totals.first_contact_count),
     send_count: show(totals.send_count),
     inhouse_count: show(totals.inhouse_count),
-    note: "",
+    note,
   };
 }
 
-function addToTotals(target: Totals, item: DailyDbRow) {
-  target.sales += Number(item.sales ?? 0);
-  target.champagne_count += Number(item.champagne_count ?? 0);
-  target.visit_count += Number(item.visit_count ?? 0);
-  target.repeat_count += Number(item.repeat_count ?? 0);
-  target.first_contact_count += Number(item.first_contact_count ?? 0);
-  target.send_count += Number(item.send_count ?? 0);
-  target.inhouse_count += Number(item.inhouse_count ?? 0);
+function toEditable(row: DailyDbRow): EditableDailyRow {
+  const visitCount = Number(row.visit_count ?? 0);
+  const repeatCount = Number(row.repeat_count ?? 0);
+
+  return {
+    member_id: row.member_id,
+    team_id: row.team_id,
+    business_date: row.business_date,
+    sales: Number(row.sales ?? 0),
+    champagne_count: Number(row.champagne_count ?? 0),
+    visit_count: visitCount,
+    existing_visit_count: Math.max(
+      0,
+      visitCount - repeatCount
+    ),
+    repeat_count: repeatCount,
+    first_contact_count: Number(
+      row.first_contact_count ?? 0
+    ),
+    send_count: Number(row.send_count ?? 0),
+    inhouse_count: Number(row.inhouse_count ?? 0),
+    note: row.note ?? null,
+  };
 }
 
-function hasInput(row: DailyInput) {
+function sumRows(rows: EditableDailyRow[]): Totals {
+  const totals = { ...ZERO_TOTALS };
+
+  for (const row of rows) {
+    for (const key of METRICS) {
+      totals[key] += row[key];
+    }
+  }
+
+  return totals;
+}
+
+function hasAnyInput(row: DailyInput) {
   return (
     row.sales !== "" ||
     row.champagne_count !== "" ||
@@ -138,58 +187,177 @@ function hasInput(row: DailyInput) {
   );
 }
 
-function numberOf(value: string) {
-  const n = Number(value || 0);
-  return Number.isFinite(n) ? n : 0;
+function createTodayRow(
+  member: Member,
+  businessDate: string
+): EditableDailyRow {
+  return {
+    member_id: member.id,
+    team_id: member.team_id,
+    business_date: businessDate,
+    sales: 0,
+    champagne_count: 0,
+    visit_count: 0,
+    existing_visit_count: 0,
+    repeat_count: 0,
+    first_contact_count: 0,
+    send_count: 0,
+    inhouse_count: 0,
+    note: null,
+  };
+}
+
+function reconcileMetric(
+  rows: EditableDailyRow[],
+  key: MetricKey,
+  targetTotal: number,
+  businessDate: string,
+  member: Member
+) {
+  const currentTotal = rows.reduce(
+    (sum, row) => sum + row[key],
+    0
+  );
+
+  const difference = targetTotal - currentTotal;
+
+  if (difference === 0) return;
+
+  let todayRow = rows.find(
+    (row) => row.business_date === businessDate
+  );
+
+  if (!todayRow) {
+    todayRow = createTodayRow(
+      member,
+      businessDate
+    );
+    rows.push(todayRow);
+  }
+
+  if (difference > 0) {
+    todayRow[key] += difference;
+    return;
+  }
+
+  let remaining = Math.abs(difference);
+
+  const newestFirst = [...rows].sort(
+    (a, b) =>
+      b.business_date.localeCompare(
+        a.business_date
+      )
+  );
+
+  for (const row of newestFirst) {
+    if (remaining <= 0) break;
+
+    const available = row[key];
+
+    if (available <= 0) continue;
+
+    const reduction = Math.min(
+      available,
+      remaining
+    );
+
+    row[key] -= reduction;
+    remaining -= reduction;
+  }
+
+  if (remaining > 0) {
+    throw new Error(
+      "累計値を補正できませんでした。入力値を確認してください。"
+    );
+  }
 }
 
 export default function DailyPage() {
-  const [supabase] = useState(() => createClient());
-  const [businessDate, setBusinessDate] = useState(todayJst());
-  const [members, setMembers] = useState<Member[]>([]);
-  const [rows, setRows] = useState<Record<string, DailyInput>>({});
-  const [existingIds, setExistingIds] = useState<Set<string>>(new Set());
-  const [role, setRole] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [dailyLoading, setDailyLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState("");
-  const [reloadKey, setReloadKey] = useState(0);
+  const [supabase] = useState(() =>
+    createClient()
+  );
 
-  const normalizedRole = normalizeRole(role);
-  const canEdit = normalizedRole !== "member";
+  const [businessDate, setBusinessDate] =
+    useState(todayJst());
+
+  const [members, setMembers] =
+    useState<Member[]>([]);
+
+  const [rows, setRows] = useState<
+    Record<string, DailyInput>
+  >({});
+
+  const [existingIds, setExistingIds] =
+    useState<Set<string>>(new Set());
+
+  const [role, setRole] = useState("");
+  const [loading, setLoading] =
+    useState(true);
+
+  const [dailyLoading, setDailyLoading] =
+    useState(false);
+
+  const [saving, setSaving] =
+    useState(false);
+
+  const [message, setMessage] =
+    useState("");
+
+  const [reloadKey, setReloadKey] =
+    useState(0);
+
+  const normalizedRole =
+    normalizeRole(role);
+
+  const canEdit =
+    normalizedRole !== "member";
 
   useEffect(() => {
-    async function loadBase() {
+    async function loadMembers() {
       setLoading(true);
       setMessage("");
 
       const {
         data: { user },
-      } = await supabase.auth.getUser();
+      } =
+        await supabase.auth.getUser();
 
       if (!user) {
         window.location.href = "/login";
         return;
       }
 
-      const { data: profile, error: profileError } = await supabase
+      const {
+        data: profile,
+        error: profileError,
+      } = await supabase
         .from("profiles")
         .select("role, team_id")
         .eq("id", user.id)
         .maybeSingle();
 
       if (profileError) {
-        setMessage("ERROR: " + profileError.message);
+        setMessage(
+          "ERROR: " +
+            profileError.message
+        );
+
         setLoading(false);
         return;
       }
 
-      const currentRole = normalizeRole(profile?.role ?? null);
-      const currentTeamId = profile?.team_id ?? null;
-      const requestedTeamId = new URLSearchParams(window.location.search).get(
-        "team"
-      );
+      const currentRole =
+        normalizeRole(
+          profile?.role ?? null
+        );
+
+      const currentTeamId =
+        profile?.team_id ?? null;
+
+      const requestedTeamId =
+        new URLSearchParams(
+          window.location.search
+        ).get("team");
 
       setRole(profile?.role ?? "");
 
@@ -200,144 +368,230 @@ export default function DailyPage() {
         return;
       }
 
-      let memberQuery = supabase
+      let query = supabase
         .from("members")
-        .select("id, team_id, name, display_order")
+        .select(
+          "id, team_id, name, display_order"
+        )
         .eq("is_active", true)
-        .order("display_order", { ascending: true });
+        .order("display_order", {
+          ascending: true,
+        });
 
-      if (currentRole === "team_manager") {
+      if (
+        currentRole === "team_manager"
+      ) {
         if (!currentTeamId) {
+          setMessage(
+            "ERROR: 所属チームが未設定です"
+          );
+
           setMembers([]);
           setRows({});
-          setMessage("ERROR: 所属チームが未設定です");
           setLoading(false);
+
           return;
         }
 
-        if (requestedTeamId && requestedTeamId !== currentTeamId) {
+        if (
+          requestedTeamId &&
+          requestedTeamId !==
+            currentTeamId
+        ) {
+          setMessage(
+            "ERROR: 他チームの日報は編集できません"
+          );
+
           setMembers([]);
           setRows({});
-          setMessage("ERROR: 他チームの日報は編集できません");
           setLoading(false);
+
           return;
         }
 
-        memberQuery = memberQuery.eq("team_id", currentTeamId);
+        query = query.eq(
+          "team_id",
+          currentTeamId
+        );
       } else if (requestedTeamId) {
-        memberQuery = memberQuery.eq("team_id", requestedTeamId);
+        query = query.eq(
+          "team_id",
+          requestedTeamId
+        );
       }
 
-      const { data, error } = await memberQuery;
+      const {
+        data,
+        error,
+      } = await query;
 
       if (error) {
-        setMessage("ERROR: " + error.message);
+        setMessage(
+          "ERROR: " + error.message
+        );
+
         setLoading(false);
         return;
       }
 
-      const memberList = (data ?? []) as Member[];
-      const initial: Record<string, DailyInput> = {};
+      const memberList =
+        (data ?? []) as Member[];
 
-      memberList.forEach((member) => {
-        initial[member.id] = emptyRow(member);
-      });
+      const initial: Record<
+        string,
+        DailyInput
+      > = {};
+
+      for (const member of memberList) {
+        initial[member.id] =
+          emptyInput(member);
+      }
 
       setMembers(memberList);
       setRows(initial);
       setLoading(false);
     }
 
-    loadBase();
+    loadMembers();
   }, [supabase]);
 
   useEffect(() => {
-    if (members.length === 0 || !businessDate) return;
+    if (
+      !businessDate ||
+      members.length === 0
+    ) {
+      return;
+    }
 
-    async function loadDaily() {
+    async function loadMonthlyCumulative() {
       setDailyLoading(true);
+      setMessage("");
 
-      const ids = members.map((member) => member.id);
-      const monthStart = `${businessDate.slice(0, 7)}-01`;
+      const memberIds = members.map(
+        (member) => member.id
+      );
 
-      const { data, error } = await supabase
+      const monthStart =
+        `${businessDate.slice(0, 7)}-01`;
+
+      const {
+        data,
+        error,
+      } = await supabase
         .from("daily_results")
         .select(
-          `
-          member_id,
-          team_id,
-          business_date,
-          sales,
-          champagne_count,
-          visit_count,
-          repeat_count,
-          first_contact_count,
-          send_count,
-          inhouse_count,
-          note
-        `
+          "member_id, team_id, business_date, sales, champagne_count, visit_count, existing_visit_count, repeat_count, first_contact_count, send_count, inhouse_count, note"
         )
-        .gte("business_date", monthStart)
-        .lte("business_date", businessDate)
-        .in("member_id", ids);
+        .gte(
+          "business_date",
+          monthStart
+        )
+        .lte(
+          "business_date",
+          businessDate
+        )
+        .in(
+          "member_id",
+          memberIds
+        );
 
       if (error) {
-        setMessage("ERROR: " + error.message);
+        setMessage(
+          "ERROR: " + error.message
+        );
+
         setDailyLoading(false);
         return;
       }
 
-      const loaded = (data ?? []) as DailyDbRow[];
-      const previousByMember: Record<string, Totals> = {};
-      const currentDayByMember: Record<string, DailyDbRow> = {};
-      const existing = new Set<string>();
+      const grouped =
+        new Map<
+          string,
+          EditableDailyRow[]
+        >();
 
-      for (const item of loaded) {
-        if (item.business_date === businessDate) {
-          currentDayByMember[item.member_id] = item;
-          existing.add(item.member_id);
-          continue;
-        }
+      const completed =
+        new Set<string>();
 
-        if (!previousByMember[item.member_id]) {
-          previousByMember[item.member_id] = { ...ZERO_TOTALS };
-        }
+      for (
+        const raw of
+          (data ?? []) as DailyDbRow[]
+      ) {
+        const editable =
+          toEditable(raw);
 
-        addToTotals(previousByMember[item.member_id], item);
-      }
+        const list =
+          grouped.get(
+            editable.member_id
+          ) ?? [];
 
-      const nextRows: Record<string, DailyInput> = {};
+        list.push(editable);
 
-      for (const member of members) {
-        const currentDay = currentDayByMember[member.id];
+        grouped.set(
+          editable.member_id,
+          list
+        );
 
-        if (currentDay) {
-          nextRows[member.id] = directRow(member, currentDay);
-        } else {
-          nextRows[member.id] = cumulativeRow(
-            member,
-            previousByMember[member.id] ?? ZERO_TOTALS
+        if (
+          editable.business_date ===
+          businessDate
+        ) {
+          completed.add(
+            editable.member_id
           );
         }
       }
 
+      const nextRows: Record<
+        string,
+        DailyInput
+      > = {};
+
+      for (const member of members) {
+        const memberRows =
+          grouped.get(member.id) ?? [];
+
+        const totals =
+          sumRows(memberRows);
+
+        const todayNote =
+          memberRows.find(
+            (row) =>
+              row.business_date ===
+              businessDate
+          )?.note ?? "";
+
+        nextRows[member.id] =
+          totalsToInput(
+            member,
+            totals,
+            todayNote ?? ""
+          );
+      }
+
       setRows(nextRows);
-      setExistingIds(existing);
+      setExistingIds(completed);
       setDailyLoading(false);
     }
 
-    loadDaily();
-  }, [businessDate, members, reloadKey, supabase]);
+    loadMonthlyCumulative();
+  }, [
+    businessDate,
+    members,
+    reloadKey,
+    supabase,
+  ]);
 
   function change(
     memberId: string,
     field: keyof DailyInput,
     value: string
   ) {
-    setRows((prev) => ({
-      ...prev,
+    setRows((previous) => ({
+      ...previous,
+
       [memberId]: {
-        ...prev[memberId],
+        ...previous[memberId],
         [field]: value,
       },
     }));
@@ -346,306 +600,460 @@ export default function DailyPage() {
   async function resetCurrentDay() {
     if (!canEdit) return;
 
-    const ok = window.confirm(
-      `${businessDate} の日報データを削除します。\n本当に削除しますか？`
-    );
-
-    if (!ok) return;
+    if (
+      !window.confirm(
+        `${businessDate} の日報データを削除します。\n本当に削除しますか？`
+      )
+    ) {
+      return;
+    }
 
     setSaving(true);
     setMessage("");
 
-    const ids = members.map((member) => member.id);
+    const memberIds =
+      members.map(
+        (member) => member.id
+      );
 
-    const { error } = await supabase
+    const {
+      error,
+    } = await supabase
       .from("daily_results")
       .delete()
-      .eq("business_date", businessDate)
-      .in("member_id", ids);
+      .eq(
+        "business_date",
+        businessDate
+      )
+      .in(
+        "member_id",
+        memberIds
+      );
 
     if (error) {
-      setMessage("ERROR: " + error.message);
+      setMessage(
+        "ERROR: " + error.message
+      );
+
       setSaving(false);
       return;
     }
 
-    setMessage(`${businessDate} のデータを削除しました`);
-    setReloadKey((value) => value + 1);
+    setMessage(
+      `${businessDate} のデータを削除しました`
+    );
+
+    setReloadKey(
+      (value) => value + 1
+    );
+
     setSaving(false);
   }
 
   async function resetCurrentMonth() {
     if (!canEdit) return;
 
-    const yearMonth = businessDate.slice(0, 7);
-    const startDate = `${yearMonth}-01`;
-    const [year, month] = yearMonth.split("-").map(Number);
-    const nextMonthDate = new Date(year, month, 1);
-    const nextMonth = `${nextMonthDate.getFullYear()}-${String(
-      nextMonthDate.getMonth() + 1
-    ).padStart(2, "0")}-01`;
+    const yearMonth =
+      businessDate.slice(0, 7);
 
-    const ok = window.confirm(
-      `${yearMonth} の表示対象メンバーの実績を全削除します。\n本当に削除しますか？`
-    );
+    const startDate =
+      `${yearMonth}-01`;
 
-    if (!ok) return;
+    const [year, month] =
+      yearMonth
+        .split("-")
+        .map(Number);
 
-    const finalOk = window.confirm(
-      "最終確認です。\nこの操作は元に戻せません。削除しますか？"
-    );
+    const nextMonthDate =
+      new Date(
+        year,
+        month,
+        1
+      );
 
-    if (!finalOk) return;
+    const nextMonth =
+      `${nextMonthDate.getFullYear()}-${String(
+        nextMonthDate.getMonth() + 1
+      ).padStart(2, "0")}-01`;
+
+    if (
+      !window.confirm(
+        `${yearMonth} の表示対象メンバーの実績を全削除します。\n本当に削除しますか？`
+      )
+    ) {
+      return;
+    }
+
+    if (
+      !window.confirm(
+        "最終確認です。\nこの操作は元に戻せません。削除しますか？"
+      )
+    ) {
+      return;
+    }
 
     setSaving(true);
     setMessage("");
 
-    const ids = members.map((member) => member.id);
+    const memberIds =
+      members.map(
+        (member) => member.id
+      );
 
-    const { error } = await supabase
+    const {
+      error,
+    } = await supabase
       .from("daily_results")
       .delete()
-      .gte("business_date", startDate)
-      .lt("business_date", nextMonth)
-      .in("member_id", ids);
+      .gte(
+        "business_date",
+        startDate
+      )
+      .lt(
+        "business_date",
+        nextMonth
+      )
+      .in(
+        "member_id",
+        memberIds
+      );
 
     if (error) {
-      setMessage("ERROR: " + error.message);
+      setMessage(
+        "ERROR: " + error.message
+      );
+
       setSaving(false);
       return;
     }
 
-    setMessage(`${yearMonth} の実績をリセットしました`);
-    setReloadKey((value) => value + 1);
+    setMessage(
+      `${yearMonth} の実績をリセットしました`
+    );
+
+    setReloadKey(
+      (value) => value + 1
+    );
+
     setSaving(false);
   }
 
   async function saveAll() {
-    if (!canEdit || dailyLoading) return;
+    if (
+      !canEdit ||
+      dailyLoading ||
+      saving
+    ) {
+      return;
+    }
 
-    const targets = members
-      .map((member) => rows[member.id])
-      .filter(
-        (row): row is DailyInput =>
-          !!row && (hasInput(row) || existingIds.has(row.member_id))
+    const targets =
+      members
+        .map(
+          (member) =>
+            rows[member.id]
+        )
+        .filter(
+          (
+            row
+          ): row is DailyInput =>
+            !!row &&
+            (
+              hasAnyInput(row) ||
+              existingIds.has(
+                row.member_id
+              )
+            )
+        );
+
+    if (
+      targets.length === 0
+    ) {
+      setMessage(
+        "入力された日報がありません"
       );
 
-    if (targets.length === 0) {
-      setMessage("入力された日報がありません");
       return;
     }
 
     for (const row of targets) {
-      const values = [
-        row.sales,
-        row.champagne_count,
-        row.visit_count,
-        row.repeat_count,
-        row.first_contact_count,
-        row.send_count,
-        row.inhouse_count,
-      ].map(numberOf);
+      for (
+        const key of METRICS
+      ) {
+        if (
+          numberOf(row[key]) < 0
+        ) {
+          const memberName =
+            members.find(
+              (member) =>
+                member.id ===
+                row.member_id
+            )?.name;
 
-      if (values.some((value) => value < 0)) {
-        const memberName = members.find((m) => m.id === row.member_id)?.name;
-        setMessage(
-          `ERROR: ${
-            memberName ?? "対象メンバー"
-          } の数字は0以上で入力してください`
-        );
-        return;
+          setMessage(
+            `ERROR: ${
+              memberName ??
+              "対象メンバー"
+            } の数字は0以上で入力してください`
+          );
+
+          return;
+        }
       }
     }
 
     setSaving(true);
     setMessage("");
 
-    const monthStart = `${businessDate.slice(0, 7)}-01`;
-    const targetIds = targets.map((row) => row.member_id);
+    const monthStart =
+      `${businessDate.slice(0, 7)}-01`;
 
-    const { data: previousData, error: previousError } = await supabase
+    const targetIds =
+      targets.map(
+        (row) =>
+          row.member_id
+      );
+
+    const {
+      data,
+      error: loadError,
+    } = await supabase
       .from("daily_results")
       .select(
-        `
-        member_id,
-        team_id,
-        business_date,
-        sales,
-        champagne_count,
-        visit_count,
-        repeat_count,
-        first_contact_count,
-        send_count,
-        inhouse_count,
-        note
-      `
+        "member_id, team_id, business_date, sales, champagne_count, visit_count, existing_visit_count, repeat_count, first_contact_count, send_count, inhouse_count, note"
       )
-      .gte("business_date", monthStart)
-      .lt("business_date", businessDate)
-      .in("member_id", targetIds);
+      .gte(
+        "business_date",
+        monthStart
+      )
+      .lte(
+        "business_date",
+        businessDate
+      )
+      .in(
+        "member_id",
+        targetIds
+      );
 
-    if (previousError) {
-      setMessage("ERROR: " + previousError.message);
+    if (loadError) {
+      setMessage(
+        "ERROR: " +
+          loadError.message
+      );
+
       setSaving(false);
       return;
     }
 
-    const previousByMember: Record<string, Totals> = {};
+    const grouped =
+      new Map<
+        string,
+        EditableDailyRow[]
+      >();
 
-    for (const item of (previousData ?? []) as DailyDbRow[]) {
-      if (!previousByMember[item.member_id]) {
-        previousByMember[item.member_id] = { ...ZERO_TOTALS };
-      }
-      addToTotals(previousByMember[item.member_id], item);
+    for (
+      const raw of
+        (data ?? []) as DailyDbRow[]
+    ) {
+      const editable =
+        toEditable(raw);
+
+      const list =
+        grouped.get(
+          editable.member_id
+        ) ?? [];
+
+      list.push(editable);
+
+      grouped.set(
+        editable.member_id,
+        list
+      );
     }
 
-    const payload: Array<{
-      member_id: string;
-      team_id: string | null;
-      business_date: string;
-      sales: number;
-      champagne_count: number;
-      visit_count: number;
-      existing_visit_count: number;
-      repeat_count: number;
-      first_contact_count: number;
-      send_count: number;
-      inhouse_count: number;
-      note: string | null;
-    }> = [];
+    const payload:
+      EditableDailyRow[] = [];
 
-    for (const row of targets) {
-      const isEditingExistingDay = existingIds.has(row.member_id);
-      const previous = previousByMember[row.member_id] ?? ZERO_TOTALS;
-
-      let sales = numberOf(row.sales);
-      let champagneCount = numberOf(row.champagne_count);
-      let visitCount = numberOf(row.visit_count);
-      let repeatCount = numberOf(row.repeat_count);
-      let firstContactCount = numberOf(row.first_contact_count);
-      let sendCount = numberOf(row.send_count);
-      let inhouseCount = numberOf(row.inhouse_count);
-
-      if (!isEditingExistingDay) {
-        const currentCumulative: Totals = {
-          sales,
-          champagne_count: champagneCount,
-          visit_count: visitCount,
-          repeat_count: repeatCount,
-          first_contact_count: firstContactCount,
-          send_count: sendCount,
-          inhouse_count: inhouseCount,
-        };
-
-        const fieldChecks: Array<[keyof Totals, string]> = [
-          ["sales", "売上"],
-          ["champagne_count", "オリシャン"],
-          ["visit_count", "来店組数"],
-          ["repeat_count", "リピート"],
-          ["first_contact_count", "初回"],
-          ["send_count", "送り"],
-          ["inhouse_count", "場内"],
-        ];
-
-        const invalidField = fieldChecks.find(
-          ([key]) => currentCumulative[key] < previous[key]
-        );
-
-        if (invalidField) {
-          const memberName = members.find((m) => m.id === row.member_id)?.name;
-          setMessage(
-            `ERROR: ${
-              memberName ?? "対象メンバー"
-            } の${
-              invalidField[1]
-            }が前日までの累計より小さくなっています。過去の数字を減らす場合は、その営業日を選んで直接修正してください。`
+    try {
+      for (
+        const input of targets
+      ) {
+        const member =
+          members.find(
+            (item) =>
+              item.id ===
+              input.member_id
           );
-          setSaving(false);
-          return;
+
+        if (!member) continue;
+
+        const memberRows =
+          grouped.get(
+            member.id
+          ) ?? [];
+
+        let todayRow =
+          memberRows.find(
+            (row) =>
+              row.business_date ===
+              businessDate
+          );
+
+        if (!todayRow) {
+          todayRow =
+            createTodayRow(
+              member,
+              businessDate
+            );
+
+          memberRows.push(
+            todayRow
+          );
         }
 
-        sales -= previous.sales;
-        champagneCount -= previous.champagne_count;
-        visitCount -= previous.visit_count;
-        repeatCount -= previous.repeat_count;
-        firstContactCount -= previous.first_contact_count;
-        sendCount -= previous.send_count;
-        inhouseCount -= previous.inhouse_count;
+        for (
+          const key of METRICS
+        ) {
+          reconcileMetric(
+            memberRows,
+            key,
+            numberOf(
+              input[key]
+            ),
+            businessDate,
+            member
+          );
+        }
+
+        todayRow =
+          memberRows.find(
+            (row) =>
+              row.business_date ===
+              businessDate
+          )!;
+
+        todayRow.team_id =
+          input.team_id ??
+          member.team_id;
+
+        todayRow.note =
+          input.note.trim() ||
+          null;
+
+        for (
+          const row of memberRows
+        ) {
+          row.existing_visit_count =
+            Math.max(
+              0,
+              row.visit_count -
+                row.repeat_count
+            );
+
+          payload.push(row);
+        }
       }
+    } catch (error) {
+      setMessage(
+        "ERROR: " +
+          (
+            error instanceof Error
+              ? error.message
+              : "累計値の補正に失敗しました"
+          )
+      );
 
-      payload.push({
-        member_id: row.member_id,
-        team_id: row.team_id,
-        business_date: businessDate,
-        sales,
-        champagne_count: champagneCount,
-        visit_count: visitCount,
-        existing_visit_count: Math.max(0, visitCount - repeatCount),
-        repeat_count: repeatCount,
-        first_contact_count: firstContactCount,
-        send_count: sendCount,
-        inhouse_count: inhouseCount,
-        note: row.note.trim() || null,
-      });
-    }
-
-    const { error } = await supabase.from("daily_results").upsert(payload, {
-      onConflict: "member_id,business_date",
-    });
-
-    if (error) {
-      setMessage("ERROR: " + error.message);
       setSaving(false);
       return;
     }
 
-    const payloadByMember = new Map(
-      payload.map((item) => [item.member_id, item] as const)
+    const uniquePayload =
+      Array.from(
+        new Map(
+          payload.map(
+            (row) =>
+              [
+                `${row.member_id}:${row.business_date}`,
+                row,
+              ] as const
+          )
+        ).values()
+      );
+
+    const {
+      error: saveError,
+    } = await supabase
+      .from("daily_results")
+      .upsert(
+        uniquePayload,
+        {
+          onConflict:
+            "member_id,business_date",
+        }
+      );
+
+    if (saveError) {
+      setMessage(
+        "ERROR: " +
+          saveError.message
+      );
+
+      setSaving(false);
+      return;
+    }
+
+    setExistingIds(
+      (previous) => {
+        const next =
+          new Set(previous);
+
+        for (
+          const row of targets
+        ) {
+          next.add(
+            row.member_id
+          );
+        }
+
+        return next;
+      }
     );
 
-    setRows((prev) => {
-      const next = { ...prev };
+    setMessage(
+      `${targets.length}名分の月間累計を保存しました`
+    );
 
-      for (const member of members) {
-        const item = payloadByMember.get(member.id);
-        if (!item) continue;
+    setReloadKey(
+      (value) => value + 1
+    );
 
-        next[member.id] = {
-          member_id: member.id,
-          team_id: item.team_id,
-          sales: String(item.sales),
-          champagne_count: String(item.champagne_count),
-          visit_count: String(item.visit_count),
-          repeat_count: String(item.repeat_count),
-          first_contact_count: String(item.first_contact_count),
-          send_count: String(item.send_count),
-          inhouse_count: String(item.inhouse_count),
-          note: item.note ?? "",
-        };
-      }
-
-      return next;
-    });
-
-    setExistingIds((prev) => {
-      const next = new Set(prev);
-      targets.forEach((row) => next.add(row.member_id));
-      return next;
-    });
-
-    setMessage(`${targets.length}名分の日報を保存しました`);
     setSaving(false);
 
-    const returnTeamId = new URLSearchParams(window.location.search).get("team");
+    const returnTeamId =
+      new URLSearchParams(
+        window.location.search
+      ).get("team");
+
     if (returnTeamId) {
-      window.location.href = `/teams/${returnTeamId}`;
+      window.location.href =
+        `/teams/${returnTeamId}`;
     }
   }
 
-  const completedCount = useMemo(
-    () => members.filter((member) => existingIds.has(member.id)).length,
-    [members, existingIds]
-  );
+  const completedCount =
+    useMemo(
+      () =>
+        members.filter(
+          (member) =>
+            existingIds.has(
+              member.id
+            )
+        ).length,
+      [
+        members,
+        existingIds,
+      ]
+    );
 
   if (loading) {
     return (
@@ -659,11 +1067,19 @@ export default function DailyPage() {
     return (
       <main className="min-h-screen bg-black p-6 text-white">
         <div className="mx-auto max-w-md px-4">
-          <p className="text-xs tracking-[0.3em] text-zinc-500">SWAMP-FOG</p>
-          <h1 className="mt-2 text-3xl font-bold">日報</h1>
+          <p className="text-xs tracking-[0.3em] text-zinc-500">
+            SWAMP-FOG
+          </p>
+
+          <h1 className="mt-2 text-3xl font-bold">
+            日報
+          </h1>
 
           <div className="mt-8 rounded-2xl border border-zinc-800 bg-zinc-950 p-5">
-            <p className="font-bold">日報は部責以上が入力します</p>
+            <p className="font-bold">
+              日報は部責以上が入力します
+            </p>
+
             <p className="mt-2 text-sm text-zinc-500">
               キャストアカウントからの日報入力はできません。
             </p>
@@ -683,233 +1099,450 @@ export default function DailyPage() {
   return (
     <main className="min-h-screen bg-black pb-28 text-white">
       <div className="mx-auto w-full max-w-3xl px-4 pt-8">
-        <p className="text-xs tracking-[0.3em] text-zinc-500">SWAMP-FOG</p>
-        <h1 className="mt-2 text-3xl font-bold">日報入力・編集</h1>
-        <p className="mt-1 text-sm text-zinc-500">DAILY RESULT</p>
+        <p className="text-xs tracking-[0.3em] text-zinc-500">
+          SWAMP-FOG
+        </p>
+
+        <h1 className="mt-2 text-3xl font-bold">
+          月間累計入力
+        </h1>
+
+        <p className="mt-1 text-sm text-zinc-500">
+          DAILY RESULT
+        </p>
 
         <section className="mt-6 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
-          <p className="text-sm font-bold">入力ルール</p>
+          <p className="text-sm font-bold">
+            日報は月間累計を毎日更新
+          </p>
+
           <p className="mt-2 text-xs leading-5 text-zinc-400">
-            未入力の人は月間累計を入力します。「済」の人は、その営業日の実績を直接編集します。
-            入力済みの日報は数字を減らして保存できます。
+            表示されている数字は、この営業日までの月間累計です。
+            数字を増やすだけでなく、入力ミスがあればそのまま小さい数字へ修正できます。
           </p>
         </section>
 
         <section className="mt-5 rounded-2xl border border-zinc-800 p-4">
           <label className="block">
-            <span className="text-sm text-zinc-400">営業日</span>
+            <span className="text-sm text-zinc-400">
+              営業日（この日までの月間累計）
+            </span>
+
             <input
               type="date"
-              value={businessDate}
-              onChange={(e) => {
+              value={
+                businessDate
+              }
+              onChange={(
+                event
+              ) => {
                 setMessage("");
-                setBusinessDate(e.target.value);
+
+                setBusinessDate(
+                  event.target
+                    .value
+                );
               }}
               className="mt-2 w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-4 text-white"
             />
           </label>
 
           <div className="mt-4 flex items-center justify-between text-sm">
-            <span className="text-zinc-400">入力状況</span>
+            <span className="text-zinc-400">
+              本日の入力状況
+            </span>
+
             <span className="font-bold">
-              {completedCount} / {members.length}名
+              {completedCount} /{" "}
+              {members.length}
+              名
             </span>
           </div>
 
           {dailyLoading && (
-            <p className="mt-3 text-xs text-zinc-500">日報を読み込み中...</p>
+            <p className="mt-3 text-xs text-zinc-500">
+              月間累計を読み込み中...
+            </p>
           )}
         </section>
 
         <div className="mt-5 space-y-4">
           {[...members]
-            .sort((a, b) => {
-              const aDone = existingIds.has(a.id);
-              const bDone = existingIds.has(b.id);
-              if (aDone && !bDone) return -1;
-              if (!aDone && bDone) return 1;
-              return (a.display_order ?? 9999) - (b.display_order ?? 9999);
-            })
-            .map((member) => {
-              const row = rows[member.id];
-              if (!row) return null;
+            .sort(
+              (a, b) => {
+                const aActive =
+                  hasAnyInput(
+                    rows[a.id] ??
+                      emptyInput(a)
+                  ) ||
+                  existingIds.has(
+                    a.id
+                  );
 
-              const completed = existingIds.has(member.id);
-              const existingVisits = Math.max(
-                0,
-                numberOf(row.visit_count) - numberOf(row.repeat_count)
-              );
+                const bActive =
+                  hasAnyInput(
+                    rows[b.id] ??
+                      emptyInput(b)
+                  ) ||
+                  existingIds.has(
+                    b.id
+                  );
 
-              return (
-                <section
-                  key={member.id}
-                  className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4"
-                >
-                  <div className="mb-4 flex items-center justify-between gap-3">
-                    <div>
-                      <p className="text-lg font-bold">{member.name}</p>
-                      <p className="mt-1 text-xs text-zinc-500">
+                if (
+                  aActive &&
+                  !bActive
+                ) {
+                  return -1;
+                }
+
+                if (
+                  !aActive &&
+                  bActive
+                ) {
+                  return 1;
+                }
+
+                return (
+                  (a.display_order ??
+                    9999) -
+                  (b.display_order ??
+                    9999)
+                );
+              }
+            )
+            .map(
+              (member) => {
+                const row =
+                  rows[
+                    member.id
+                  ];
+
+                if (!row) {
+                  return null;
+                }
+
+                const completed =
+                  existingIds.has(
+                    member.id
+                  );
+
+                const existingVisits =
+                  Math.max(
+                    0,
+                    numberOf(
+                      row.visit_count
+                    ) -
+                      numberOf(
+                        row.repeat_count
+                      )
+                  );
+
+                return (
+                  <section
+                    key={
+                      member.id
+                    }
+                    className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4"
+                  >
+                    <div className="mb-4 flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-lg font-bold">
+                          {
+                            member.name
+                          }
+                        </p>
+
+                        <p className="mt-1 text-xs text-zinc-500">
+                          月間累計
+                        </p>
+                      </div>
+
+                      <span
+                        className={`shrink-0 rounded-full border px-3 py-1 text-xs ${
+                          completed
+                            ? "border-zinc-600 text-white"
+                            : "border-zinc-800 text-zinc-500"
+                        }`}
+                      >
                         {completed
-                          ? "入力済み｜この日の実績を直接編集"
-                          : "未入力｜月間累計を入力"}
-                      </p>
+                          ? "済"
+                          : "未"}
+                      </span>
                     </div>
 
-                    <span
-                      className={`shrink-0 rounded-full border px-3 py-1 text-xs ${
-                        completed
-                          ? "border-zinc-600 text-white"
-                          : "border-zinc-800 text-zinc-500"
-                      }`}
-                    >
-                      {completed ? "済" : "未"}
-                    </span>
-                  </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <Field
+                        label="売上"
+                        value={
+                          row.sales
+                        }
+                        disabled={
+                          dailyLoading
+                        }
+                        onChange={(
+                          value
+                        ) =>
+                          change(
+                            member.id,
+                            "sales",
+                            value
+                          )
+                        }
+                      />
 
-                  <div className="grid grid-cols-2 gap-3">
-                    <Field
-                      label="売上"
-                      value={row.sales}
-                      disabled={!canEdit || dailyLoading}
-                      onChange={(value) => change(member.id, "sales", value)}
-                    />
+                      <Field
+                        label="オリシャン"
+                        value={
+                          row.champagne_count
+                        }
+                        disabled={
+                          dailyLoading
+                        }
+                        onChange={(
+                          value
+                        ) =>
+                          change(
+                            member.id,
+                            "champagne_count",
+                            value
+                          )
+                        }
+                      />
 
-                    <Field
-                      label="オリシャン"
-                      value={row.champagne_count}
-                      disabled={!canEdit || dailyLoading}
-                      onChange={(value) =>
-                        change(member.id, "champagne_count", value)
-                      }
-                    />
+                      <Field
+                        label="来店組数"
+                        value={
+                          row.visit_count
+                        }
+                        disabled={
+                          dailyLoading
+                        }
+                        onChange={(
+                          value
+                        ) =>
+                          change(
+                            member.id,
+                            "visit_count",
+                            value
+                          )
+                        }
+                      />
 
-                    <Field
-                      label="来店組数"
-                      value={row.visit_count}
-                      disabled={!canEdit || dailyLoading}
-                      onChange={(value) =>
-                        change(member.id, "visit_count", value)
-                      }
-                    />
+                      <div className="block">
+                        <span className="text-xs text-zinc-500">
+                          既存来店
+                        </span>
 
-                    <div className="block">
-                      <span className="text-xs text-zinc-500">既存来店</span>
-                      <div className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-900 px-3 py-2.5 text-white">
-                        {existingVisits}
+                        <div className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-900 px-3 py-2.5 text-white">
+                          {
+                            existingVisits
+                          }
+                        </div>
                       </div>
+
+                      <Field
+                        label="リピート"
+                        value={
+                          row.repeat_count
+                        }
+                        disabled={
+                          dailyLoading
+                        }
+                        onChange={(
+                          value
+                        ) =>
+                          change(
+                            member.id,
+                            "repeat_count",
+                            value
+                          )
+                        }
+                      />
+
+                      <details className="col-span-2 rounded-xl border border-zinc-800 px-3 py-2">
+                        <summary className="cursor-pointer text-sm font-bold text-zinc-300">
+                          営業行動の詳細
+                        </summary>
+
+                        <div className="mt-3 grid grid-cols-2 gap-3">
+                          <Field
+                            label="初回"
+                            value={
+                              row.first_contact_count
+                            }
+                            disabled={
+                              dailyLoading
+                            }
+                            onChange={(
+                              value
+                            ) =>
+                              change(
+                                member.id,
+                                "first_contact_count",
+                                value
+                              )
+                            }
+                          />
+
+                          <Field
+                            label="送り"
+                            value={
+                              row.send_count
+                            }
+                            disabled={
+                              dailyLoading
+                            }
+                            onChange={(
+                              value
+                            ) =>
+                              change(
+                                member.id,
+                                "send_count",
+                                value
+                              )
+                            }
+                          />
+
+                          <Field
+                            label="場内"
+                            value={
+                              row.inhouse_count
+                            }
+                            disabled={
+                              dailyLoading
+                            }
+                            onChange={(
+                              value
+                            ) =>
+                              change(
+                                member.id,
+                                "inhouse_count",
+                                value
+                              )
+                            }
+                          />
+                        </div>
+                      </details>
                     </div>
 
-                    <Field
-                      label="リピート"
-                      value={row.repeat_count}
-                      disabled={!canEdit || dailyLoading}
-                      onChange={(value) =>
-                        change(member.id, "repeat_count", value)
-                      }
-                    />
+                    <label className="mt-3 block">
+                      <span className="text-xs text-zinc-500">
+                        メモ
+                      </span>
 
-                    <details className="col-span-2 rounded-xl border border-zinc-800 px-3 py-2">
-                      <summary className="cursor-pointer text-sm font-bold text-zinc-300">
-                        営業行動の詳細
-                      </summary>
-
-                      <div className="mt-3 grid grid-cols-2 gap-3">
-                        <Field
-                          label="初回"
-                          value={row.first_contact_count}
-                          disabled={!canEdit || dailyLoading}
-                          onChange={(value) =>
-                            change(member.id, "first_contact_count", value)
-                          }
-                        />
-
-                        <Field
-                          label="送り"
-                          value={row.send_count}
-                          disabled={!canEdit || dailyLoading}
-                          onChange={(value) =>
-                            change(member.id, "send_count", value)
-                          }
-                        />
-
-                        <Field
-                          label="場内"
-                          value={row.inhouse_count}
-                          disabled={!canEdit || dailyLoading}
-                          onChange={(value) =>
-                            change(member.id, "inhouse_count", value)
-                          }
-                        />
-                      </div>
-                    </details>
-                  </div>
-
-                  <label className="mt-3 block">
-                    <span className="text-xs text-zinc-500">メモ</span>
-                    <textarea
-                      value={row.note}
-                      disabled={!canEdit || dailyLoading}
-                      onChange={(e) => change(member.id, "note", e.target.value)}
-                      rows={1}
-                      className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-black px-3 py-2.5 text-sm text-white disabled:opacity-60"
-                      placeholder="必要な場合のみ入力"
-                    />
-                  </label>
-                </section>
-              );
-            })}
+                      <textarea
+                        value={
+                          row.note
+                        }
+                        disabled={
+                          dailyLoading
+                        }
+                        onChange={(
+                          event
+                        ) =>
+                          change(
+                            member.id,
+                            "note",
+                            event.target
+                              .value
+                          )
+                        }
+                        rows={1}
+                        className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-black px-3 py-2.5 text-sm text-white disabled:opacity-60"
+                        placeholder="必要な場合のみ入力"
+                      />
+                    </label>
+                  </section>
+                );
+              }
+            )}
         </div>
 
-        {canEdit && (
-          <>
-            <details className="mt-6 rounded-2xl border border-red-950 bg-red-950/10 p-4">
-              <summary className="cursor-pointer text-sm font-bold text-red-400">
-                データ管理
-              </summary>
+        <details className="mt-6 rounded-2xl border border-red-950 bg-red-950/10 p-4">
+          <summary className="cursor-pointer text-sm font-bold text-red-400">
+            データ管理
+          </summary>
 
-              <div className="mt-4 space-y-3">
-                <button
-                  type="button"
-                  onClick={resetCurrentDay}
-                  disabled={saving || dailyLoading}
-                  className="w-full rounded-xl border border-red-900 py-3 text-sm font-bold text-red-400 disabled:opacity-40"
-                >
-                  この日のデータを削除
-                </button>
+          <div className="mt-4 space-y-3">
+            <button
+              type="button"
+              onClick={
+                resetCurrentDay
+              }
+              disabled={
+                saving ||
+                dailyLoading
+              }
+              className="w-full rounded-xl border border-red-900 py-3 text-sm font-bold text-red-400 disabled:opacity-40"
+            >
+              この日のデータを削除
+            </button>
 
-                <button
-                  type="button"
-                  onClick={resetCurrentMonth}
-                  disabled={saving || dailyLoading}
-                  className="w-full rounded-xl bg-red-950 py-3 text-sm font-bold text-red-300 disabled:opacity-40"
-                >
-                  今月の対象データを全リセット
-                </button>
-              </div>
-            </details>
+            <button
+              type="button"
+              onClick={
+                resetCurrentMonth
+              }
+              disabled={
+                saving ||
+                dailyLoading
+              }
+              className="w-full rounded-xl bg-red-950 py-3 text-sm font-bold text-red-300 disabled:opacity-40"
+            >
+              今月の対象データを全リセット
+            </button>
+          </div>
+        </details>
 
-            <div className="sticky bottom-16 z-40 mt-6 bg-black/95 py-3">
-              <button
-                type="button"
-                onClick={saveAll}
-                disabled={saving || dailyLoading}
-                className="w-full rounded-2xl bg-white py-4 font-bold text-black shadow-lg disabled:opacity-50"
-              >
-                {saving ? "保存中..." : "入力した日報を一括保存"}
-              </button>
-            </div>
-          </>
+        <div className="sticky bottom-16 z-40 mt-6 bg-black/95 py-3">
+          <button
+            type="button"
+            onClick={saveAll}
+            disabled={
+              saving ||
+              dailyLoading
+            }
+            className="w-full rounded-2xl bg-white py-4 font-bold text-black shadow-lg disabled:opacity-50"
+          >
+            {saving
+              ? "保存中..."
+              : "月間累計を保存"}
+          </button>
+        </div>
+
+        {message && (
+          <p className="mt-4 text-center text-sm">
+            {message}
+          </p>
         )}
-
-        {message && <p className="mt-4 text-center text-sm">{message}</p>}
       </div>
 
       <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-zinc-800 bg-black/95 backdrop-blur-xl pb-[env(safe-area-inset-bottom)]">
         <div className="mx-auto grid max-w-md grid-cols-4 px-2 pt-1">
-          <NavItem href="/" icon="⌂" label="ホーム" />
-          <NavItem href="/members" icon="♙" label="メンバー" />
-          <NavItem href="/daily" icon="✎" label="日報" active />
-          <NavItem href="/settings" icon="⚙" label="設定" />
+          <NavItem
+            href="/"
+            icon="⌂"
+            label="ホーム"
+          />
+
+          <NavItem
+            href="/members"
+            icon="♙"
+            label="メンバー"
+          />
+
+          <NavItem
+            href="/daily"
+            icon="✎"
+            label="日報"
+            active
+          />
+
+          <NavItem
+            href="/settings"
+            icon="⚙"
+            label="設定"
+          />
         </div>
       </nav>
     </main>
@@ -924,12 +1557,16 @@ function Field({
 }: {
   label: string;
   value: string;
-  onChange: (value: string) => void;
+  onChange: (
+    value: string
+  ) => void;
   disabled: boolean;
 }) {
   return (
     <label className="block">
-      <span className="text-xs text-zinc-500">{label}</span>
+      <span className="text-xs text-zinc-500">
+        {label}
+      </span>
 
       <input
         type="number"
@@ -938,8 +1575,14 @@ function Field({
         step="1"
         value={value}
         disabled={disabled}
-        onFocus={(e) => e.currentTarget.select()}
-        onChange={(e) => onChange(e.target.value)}
+        onFocus={(event) =>
+          event.currentTarget.select()
+        }
+        onChange={(event) =>
+          onChange(
+            event.target.value
+          )
+        }
         placeholder="0"
         className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-black px-3 py-2.5 text-white disabled:opacity-60"
       />
@@ -962,11 +1605,18 @@ function NavItem({
     <Link
       href={href}
       className={`py-2.5 text-center text-[10px] ${
-        active ? "font-bold text-white" : "text-zinc-600"
+        active
+          ? "font-bold text-white"
+          : "text-zinc-600"
       }`}
     >
-      <span className="block text-lg leading-none">{icon}</span>
-      <span className="mt-1 block">{label}</span>
+      <span className="block text-lg leading-none">
+        {icon}
+      </span>
+
+      <span className="mt-1 block">
+        {label}
+      </span>
     </Link>
   );
 }
