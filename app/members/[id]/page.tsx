@@ -21,6 +21,15 @@ type Goal = {
   visit_count_target: number;
 };
 
+type VisitType = "existing" | "inhouse" | "companion";
+
+type ClientSaleRow = {
+  amount: number | null;
+  client_id: string | null;
+  client_name: string | null;
+  visit_type: VisitType | null;
+};
+
 function currentMonth() {
   const d = new Date();
 
@@ -53,18 +62,16 @@ function monthRange(targetMonth: string) {
 }
 
 function yen(value: number) {
-  return `¥${Number(value || 0).toLocaleString(
-    "ja-JP"
-  )}`;
+  return `¥${Number(
+    value || 0
+  ).toLocaleString("ja-JP")}`;
 }
 
 function percent(
   current: number,
   target: number
 ) {
-  if (target <= 0) {
-    return 0;
-  }
+  if (target <= 0) return 0;
 
   return (
     Math.round(
@@ -77,9 +84,7 @@ function progressWidth(
   current: number,
   target: number
 ) {
-  if (target <= 0) {
-    return 0;
-  }
+  if (target <= 0) return 0;
 
   return Math.min(
     100,
@@ -90,26 +95,44 @@ function progressWidth(
 export default function MemberDetailPage() {
   const params = useParams();
   const router = useRouter();
-  const memberId = params.id as string;
 
-  const [supabase] = useState(() =>
-    createClient()
+  const memberId =
+    params.id as string;
+
+  const [supabase] = useState(
+    () => createClient()
   );
 
-  const [member, setMember] =
-    useState<Member | null>(null);
+  const [
+    member,
+    setMember,
+  ] = useState<Member | null>(
+    null
+  );
 
-  const [goal, setGoal] =
-    useState<Goal | null>(null);
+  const [
+    goal,
+    setGoal,
+  ] = useState<Goal | null>(
+    null
+  );
 
-  const [month, setMonth] =
-    useState(currentMonth());
+  const [
+    month,
+    setMonth,
+  ] = useState(
+    currentMonth()
+  );
 
-  const [mustSales, setMustSales] =
-    useState("");
+  const [
+    mustSales,
+    setMustSales,
+  ] = useState("");
 
-  const [targetSales, setTargetSales] =
-    useState("");
+  const [
+    targetSales,
+    setTargetSales,
+  ] = useState("");
 
   const [
     champagneTarget,
@@ -121,16 +144,20 @@ export default function MemberDetailPage() {
     setVisitCountTarget,
   ] = useState("");
 
-  const [currentSales, setCurrentSales] =
-    useState(0);
+  const [
+    currentSales,
+    setCurrentSales,
+  ] = useState(0);
 
   const [
     currentChampagne,
     setCurrentChampagne,
   ] = useState(0);
 
-  const [currentVisits, setCurrentVisits] =
-    useState(0);
+  const [
+    currentVisits,
+    setCurrentVisits,
+  ] = useState(0);
 
   const [
     currentRepeatCount,
@@ -167,30 +194,44 @@ export default function MemberDetailPage() {
     setAssignedMustSales,
   ] = useState(0);
 
-  const [loading, setLoading] =
-    useState(true);
+  const [
+    loading,
+    setLoading,
+  ] = useState(true);
 
-  const [saving, setSaving] =
-    useState(false);
+  const [
+    saving,
+    setSaving,
+  ] = useState(false);
 
-  const [editing, setEditing] =
-    useState(false);
+  const [
+    editing,
+    setEditing,
+  ] = useState(false);
 
-  const [message, setMessage] =
-    useState("");
+  const [
+    message,
+    setMessage,
+  ] = useState("");
 
   const [
     errorMessage,
     setErrorMessage,
   ] = useState("");
 
-  const [role, setRole] =
-    useState<string | null>(null);
+  const [
+    role,
+    setRole,
+  ] = useState<
+    string | null
+  >(null);
 
   const [
     profileTeamId,
     setProfileTeamId,
-  ] = useState<string | null>(null);
+  ] = useState<
+    string | null
+  >(null);
 
   const [
     accessDenied,
@@ -259,6 +300,7 @@ export default function MemberDetailPage() {
       );
     } else {
       setGoal(null);
+
       setMustSales("");
       setTargetSales("");
       setChampagneTarget("");
@@ -305,7 +347,8 @@ export default function MemberDetailPage() {
       return;
     }
 
-    const rows = data ?? [];
+    const rows =
+      data ?? [];
 
     setCurrentSales(
       rows.reduce(
@@ -335,8 +378,7 @@ export default function MemberDetailPage() {
         (sum, row) =>
           sum +
           Number(
-            row.visit_count ??
-              0
+            row.visit_count ?? 0
           ),
         0
       )
@@ -347,8 +389,7 @@ export default function MemberDetailPage() {
         (sum, row) =>
           sum +
           Number(
-            row.repeat_count ??
-              0
+            row.repeat_count ?? 0
           ),
         0
       )
@@ -371,8 +412,7 @@ export default function MemberDetailPage() {
         (sum, row) =>
           sum +
           Number(
-            row.send_count ??
-              0
+            row.send_count ?? 0
           ),
         0
       )
@@ -383,8 +423,7 @@ export default function MemberDetailPage() {
         (sum, row) =>
           sum +
           Number(
-            row.inhouse_count ??
-              0
+            row.inhouse_count ?? 0
           ),
         0
       )
@@ -407,7 +446,7 @@ export default function MemberDetailPage() {
     } = await supabase
       .from("client_sales")
       .select(
-        "amount, client_id"
+        "amount, client_id, client_name, visit_type"
       )
       .eq(
         "member_id",
@@ -431,7 +470,8 @@ export default function MemberDetailPage() {
     }
 
     const salesRows =
-      salesData ?? [];
+      (salesData ??
+        []) as ClientSaleRow[];
 
     const clientIds =
       new Set<string>();
@@ -441,20 +481,45 @@ export default function MemberDetailPage() {
     for (
       const row of salesRows
     ) {
-      if (
-        !row.client_id
-      ) {
-        continue;
+      if (row.client_id) {
+        clientSalesTotal +=
+          Number(
+            row.amount ?? 0
+          );
       }
 
-      clientIds.add(
-        row.client_id
-      );
+      // 顧客数ルール
+      //
+      // 場内：
+      // 来店組数には反映するが
+      // 顧客数には反映しない。
+      //
+      // お連れ様：
+      // 顧客数には反映しない。
+      //
+      // リピート以降：
+      // クライアント名で
+      // 「既存」として登録・更新された場合のみ
+      // 顧客としてカウントする。
+      //
+      // 同じクライアントは
+      // 何回来ても1人としてカウント。
 
-      clientSalesTotal +=
-        Number(
-          row.amount ?? 0
+      const countsAsCustomer =
+        (
+          row.visit_type ??
+          "existing"
+        ) === "existing" &&
+        !!row.client_id &&
+        !!row.client_name?.trim();
+
+      if (
+        countsAsCustomer
+      ) {
+        clientIds.add(
+          row.client_id as string
         );
+      }
     }
 
     setExistingClientSales(
@@ -491,12 +556,9 @@ export default function MemberDetailPage() {
       );
 
     if (
-      allClientIds.length ===
-      0
+      allClientIds.length === 0
     ) {
-      setAssignedMustSales(
-        0
-      );
+      setAssignedMustSales(0);
 
       return;
     }
@@ -529,12 +591,13 @@ export default function MemberDetailPage() {
     }
 
     setAssignedMustSales(
-      (targetData ?? []).reduce(
+      (
+        targetData ?? []
+      ).reduce(
         (sum, row) =>
           sum +
           Number(
-            row.must_sales ??
-              0
+            row.must_sales ?? 0
           ),
         0
       )
@@ -547,14 +610,10 @@ export default function MemberDetailPage() {
     setErrorMessage("");
 
     await Promise.all([
-      loadGoal(
-        targetMonth
-      ),
-
+      loadGoal(targetMonth),
       loadDailyResults(
         targetMonth
       ),
-
       loadMustProgress(
         targetMonth
       ),
@@ -587,7 +646,10 @@ export default function MemberDetailPage() {
         .select(
           "role, member_id, team_id"
         )
-        .eq("id", user.id)
+        .eq(
+          "id",
+          user.id
+        )
         .maybeSingle();
 
       if (profileError) {
@@ -596,6 +658,7 @@ export default function MemberDetailPage() {
         );
 
         setLoading(false);
+
         return;
       }
 
@@ -646,6 +709,7 @@ export default function MemberDetailPage() {
         );
 
         setLoading(false);
+
         return;
       }
 
@@ -654,12 +718,10 @@ export default function MemberDetailPage() {
         "member"
           ? currentMemberId ===
             memberId
-
           : currentRole ===
-            "team_manager"
+              "team_manager"
             ? currentTeamId ===
               data.team_id
-
             : true;
 
       if (!isAllowed) {
@@ -668,6 +730,7 @@ export default function MemberDetailPage() {
         );
 
         setLoading(false);
+
         return;
       }
 
@@ -709,9 +772,7 @@ export default function MemberDetailPage() {
   }
 
   async function saveGoal() {
-    if (!member) {
-      return;
-    }
+    if (!member) return;
 
     setSaving(true);
     setMessage("");
@@ -750,9 +811,9 @@ export default function MemberDetailPage() {
         ),
     };
 
-    let saveError:
-      | { message: string }
-      | null = null;
+    let saveError: {
+      message: string;
+    } | null = null;
 
     if (goal?.id) {
       const result =
@@ -788,6 +849,7 @@ export default function MemberDetailPage() {
       );
 
       setSaving(false);
+
       return;
     }
 
@@ -799,20 +861,29 @@ export default function MemberDetailPage() {
       "保存しました"
     );
 
-    setEditing(false);
-    setSaving(false);
+    setEditing(
+      false
+    );
+
+    setSaving(
+      false
+    );
   }
 
   const normalizedRole =
-    normalizeRole(role);
+    normalizeRole(
+      role
+    );
 
   const canEditGoal =
     normalizedRole !==
       "member" &&
-    (normalizedRole !==
-      "team_manager" ||
+    (
+      normalizedRole !==
+        "team_manager" ||
       profileTeamId ===
-        member?.team_id);
+        member?.team_id
+    );
 
   const mustSalesTarget =
     Number(
@@ -959,7 +1030,9 @@ export default function MemberDetailPage() {
               </p>
 
               <h1 className="mt-2 text-3xl font-bold">
-                {member.name}
+                {
+                  member.name
+                }
               </h1>
 
               <p className="mt-1 text-sm text-zinc-500">
@@ -980,10 +1053,15 @@ export default function MemberDetailPage() {
             <div className="mb-4 flex items-center justify-between gap-3">
               <input
                 type="month"
-                value={month}
-                onChange={(e) =>
+                value={
+                  month
+                }
+                onChange={(
+                  e
+                ) =>
                   changeMonth(
-                    e.target.value
+                    e.target
+                      .value
                   )
                 }
                 className="min-w-0 rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-white"
@@ -1031,93 +1109,49 @@ export default function MemberDetailPage() {
                   </p>
 
                   <div className="mt-5 space-y-4">
-                    <label className="block">
-                      <span className="text-xs text-zinc-500">
-                        個人必達
-                      </span>
+                    <GoalField
+                      label="個人必達"
+                      value={
+                        mustSales
+                      }
+                      onChange={
+                        setMustSales
+                      }
+                      placeholder="1000000"
+                    />
 
-                      <input
-                        type="number"
-                        inputMode="numeric"
-                        min="0"
-                        value={
-                          mustSales
-                        }
-                        onChange={(e) =>
-                          setMustSales(
-                            e.target.value
-                          )
-                        }
-                        placeholder="1000000"
-                        className="mt-2 w-full rounded-2xl border border-zinc-800 bg-black px-4 py-3 text-white outline-none"
-                      />
-                    </label>
+                    <GoalField
+                      label="月間売上目標"
+                      value={
+                        targetSales
+                      }
+                      onChange={
+                        setTargetSales
+                      }
+                      placeholder="5000000"
+                    />
 
-                    <label className="block">
-                      <span className="text-xs text-zinc-500">
-                        月間売上目標
-                      </span>
+                    <GoalField
+                      label="オリシャン目標"
+                      value={
+                        champagneTarget
+                      }
+                      onChange={
+                        setChampagneTarget
+                      }
+                      placeholder="10"
+                    />
 
-                      <input
-                        type="number"
-                        inputMode="numeric"
-                        min="0"
-                        value={
-                          targetSales
-                        }
-                        onChange={(e) =>
-                          setTargetSales(
-                            e.target.value
-                          )
-                        }
-                        placeholder="5000000"
-                        className="mt-2 w-full rounded-2xl border border-zinc-800 bg-black px-4 py-3 text-white outline-none"
-                      />
-                    </label>
-
-                    <label className="block">
-                      <span className="text-xs text-zinc-500">
-                        オリシャン目標
-                      </span>
-
-                      <input
-                        type="number"
-                        inputMode="numeric"
-                        min="0"
-                        value={
-                          champagneTarget
-                        }
-                        onChange={(e) =>
-                          setChampagneTarget(
-                            e.target.value
-                          )
-                        }
-                        placeholder="10"
-                        className="mt-2 w-full rounded-2xl border border-zinc-800 bg-black px-4 py-3 text-white outline-none"
-                      />
-                    </label>
-
-                    <label className="block">
-                      <span className="text-xs text-zinc-500">
-                        来店組数目標
-                      </span>
-
-                      <input
-                        type="number"
-                        inputMode="numeric"
-                        min="0"
-                        value={
-                          visitCountTarget
-                        }
-                        onChange={(e) =>
-                          setVisitCountTarget(
-                            e.target.value
-                          )
-                        }
-                        placeholder="30"
-                        className="mt-2 w-full rounded-2xl border border-zinc-800 bg-black px-4 py-3 text-white outline-none"
-                      />
-                    </label>
+                    <GoalField
+                      label="来店組数目標"
+                      value={
+                        visitCountTarget
+                      }
+                      onChange={
+                        setVisitCountTarget
+                      }
+                      placeholder="30"
+                    />
                   </div>
 
                   <button
@@ -1138,7 +1172,9 @@ export default function MemberDetailPage() {
 
             {message && (
               <p className="mb-4 text-center text-sm text-green-400">
-                {message}
+                {
+                  message
+                }
               </p>
             )}
 
@@ -1323,7 +1359,9 @@ export default function MemberDetailPage() {
 
                 <p className="mt-3 text-xs text-zinc-500">
                   現在{" "}
-                  {currentChampagne}
+                  {
+                    currentChampagne
+                  }
                   本
                 </p>
 
@@ -1351,7 +1389,9 @@ export default function MemberDetailPage() {
 
                 <p className="mt-3 text-xs text-zinc-500">
                   現在{" "}
-                  {currentVisits}
+                  {
+                    currentVisits
+                  }
                   組
                 </p>
 
@@ -1446,6 +1486,44 @@ export default function MemberDetailPage() {
         </nav>
       )}
     </main>
+  );
+}
+
+function GoalField({
+  label,
+  value,
+  onChange,
+  placeholder,
+}: {
+  label: string;
+  value: string;
+  onChange: (
+    value: string
+  ) => void;
+  placeholder: string;
+}) {
+  return (
+    <label className="block">
+      <span className="text-xs text-zinc-500">
+        {label}
+      </span>
+
+      <input
+        type="number"
+        inputMode="numeric"
+        min="0"
+        value={value}
+        onChange={(e) =>
+          onChange(
+            e.target.value
+          )
+        }
+        placeholder={
+          placeholder
+        }
+        className="mt-2 w-full rounded-2xl border border-zinc-800 bg-black px-4 py-3 text-white outline-none"
+      />
+    </label>
   );
 }
 
