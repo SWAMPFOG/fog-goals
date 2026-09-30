@@ -380,10 +380,6 @@ export default function TeamDetailPage() {
           .select(
             "member_id, sales, champagne_count, visit_count, repeat_count, first_contact_count, send_count, inhouse_count"
           )
-          .eq(
-            "team_id",
-            teamId
-          )
           .gte(
             "business_date",
             targetMonth
@@ -483,9 +479,30 @@ export default function TeamDetailPage() {
           []) as Member[]
       );
 
+      const activeMemberIds =
+        new Set(
+          (
+            (membersResult.data ??
+              []) as Member[]
+          ).map(
+            (member) =>
+              member.id
+          )
+        );
+
+      // Aggregate by current team membership instead of daily_results.team_id.
+      // Older/manual/imported daily rows can have a missing or stale team_id,
+      // which made saved results disappear from the team total.
       setResults(
-        (dailyResult.data ??
-          []) as DailyResult[]
+        (
+          (dailyResult.data ??
+            []) as DailyResult[]
+        ).filter(
+          (row) =>
+            activeMemberIds.has(
+              row.member_id
+            )
+        )
       );
 
       setMemberGoals(
