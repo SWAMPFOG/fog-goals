@@ -841,16 +841,51 @@ export default function TeamDetailPage() {
             0
           );
 
+        const activeMemberIds =
+          new Set(
+            (
+              (membersResult.data ??
+                []) as Member[]
+            ).map(
+              (member) =>
+                member.id
+            )
+          );
+
+        const teamDailySales =
+          (
+            (dailyResult.data ??
+              []) as DailyResult[]
+          )
+            .filter(
+              (row) =>
+                activeMemberIds.has(
+                  row.member_id
+                )
+            )
+            .reduce(
+              (sum, row) =>
+                sum +
+                Number(
+                  row.sales ?? 0
+                ),
+              0
+            );
+
+        // Team must-achievement is a sales goal, so its progress must use the
+        // same daily sales total as the team's sales progress. client_sales is
+        // still used for client-count analytics, but incomplete client detail
+        // entry must not make an achieved must-goal appear unachieved.
         setTeamMustProgress({
           team_must_sales:
             teamMust,
 
           team_existing_client_sales:
-            mustSalesTotal,
+            teamDailySales,
 
           team_must_rate:
             rawRate(
-              mustSalesTotal,
+              teamDailySales,
               teamMust
             ),
 
@@ -858,7 +893,7 @@ export default function TeamDetailPage() {
             Math.max(
               0,
               teamMust -
-                mustSalesTotal
+                teamDailySales
             ),
         });
       }
