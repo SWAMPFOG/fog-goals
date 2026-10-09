@@ -9,6 +9,7 @@ type View = "loading" | "denied" | "ready" | "error";
 export default function PrivacyImpactPage() {
   const [view, setView] = useState<View>("loading");
   const [counts, setCounts] = useState<PrivacyImpactCounts | null>(null);
+  const [retry, setRetry] = useState(0);
 
   useEffect(() => {
     let alive = true;
@@ -23,6 +24,10 @@ export default function PrivacyImpactPage() {
         if (!response.ok) throw new Error("Unable to load impact preview");
         const impact: { counts: PrivacyImpactCounts } = await response.json();
         if (!alive) return;
+        const values = impact?.counts && Object.values(impact.counts);
+        if (!values || values.length !== 4 || values.some((value) => !Number.isSafeInteger(value) || value < 0)) {
+          throw new Error("Invalid impact response");
+        }
         setCounts(impact.counts);
         setView("ready");
       } catch {
@@ -31,7 +36,7 @@ export default function PrivacyImpactPage() {
     };
     void run();
     return () => { alive = false; };
-  }, []);
+  }, [retry]);
 
   const impact = counts ? { clientTargetsRequireReview: counts.clientTargetRows > 0 } : null;
 
@@ -41,7 +46,7 @@ export default function PrivacyImpactPage() {
     <p>読み取り専用の確認画面です。データの変更・削除は行いません。</p>
     {view === "loading" && <p>権限と対象件数を確認しています…</p>}
     {view === "denied" && <p role="alert">閲覧権限がありません。</p>}
-    {view === "error" && <p role="alert">件数を取得できませんでした。アクセス権限や通信状態をご確認ください。</p>}
+    {view === "error" && <div role="alert" className="space-y-3"><p>件数を取得できませんでした。アクセス権限や通信状態をご確認ください。</p><button type="button" className="rounded border px-4 py-2" onClick={() => { setView("loading"); setCounts(null); setRetry((value) => value + 1); }}>再読み込み</button></div>}
     {view === "ready" && impact && <section className="space-y-3 rounded-lg border border-red-700 p-5">
       <h2 className="font-semibold">確認できた対象件数</h2>
       <dl className="space-y-2">
