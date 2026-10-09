@@ -25,3 +25,10 @@ Status: design and read-only inspection only. No production records modified.
 6. Keep production execution disabled pending a separate approval and verified rollback/recovery plan.
 
 This file documents an audit only; it contains no delete commands or production secrets.
+
+## Confirmed foreign-key behavior (read-only inspection)
+- `client_monthly_must_targets.client_id` references `clients.id` with `ON DELETE CASCADE`.
+- `client_sales.client_id` references `clients.id` with `ON DELETE CASCADE`.
+- Therefore deleting a `clients` row would also remove its client-specific targets. Keeping client-specific target values requires a separately reviewed retention design; do not assume these rows survive.
+- `daily_results` references members and teams, not clients. Its non-sales counters can remain independently of client records.
+- No write operations were performed in this investigation.
