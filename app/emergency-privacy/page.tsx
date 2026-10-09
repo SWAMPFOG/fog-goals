@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import type { PrivacyImpactCounts, PrivacyImpactSummary } from "@/utils/privacy/impact";
+import type { PrivacyImpactCounts } from "@/utils/privacy/impact";
 
 type View = "loading" | "denied" | "ready" | "error";
 
@@ -21,7 +21,7 @@ export default function PrivacyImpactPage() {
           return;
         }
         if (!response.ok) throw new Error("Unable to load impact preview");
-        const impact: PrivacyImpactSummary = await response.json();
+        const impact: { counts: PrivacyImpactCounts } = await response.json();
         if (!alive) return;
         setCounts(impact.counts);
         setView("ready");
