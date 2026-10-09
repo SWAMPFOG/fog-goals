@@ -2,9 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { createClient } from "@/utils/supabase/client";
-import { canPreviewPrivacyImpact } from "@/utils/privacy/permissions";
-import { summarizePrivacyImpact, type PrivacyImpactCounts } from "@/utils/privacy/impact";
+import type { PrivacyImpactCounts, PrivacyImpactSummary } from "@/utils/privacy/impact";
 
 type View = "loading" | "denied" | "ready" | "error";
 
@@ -16,34 +14,16 @@ export default function PrivacyImpactPage() {
     let alive = true;
     const run = async () => {
       try {
-        const supabase = createClient();
-        const { data: { user }, error: authError } = await supabase.auth.getUser();
+        const response = await fetch("/api/privacy-impact", { cache: "no-store", credentials: "same-origin" });
         if (!alive) return;
-        if (authError || !user) { setView("denied"); return; }
-        const { data: profile, error: profileError } = await supabase
-          .from("profiles").select("role,is_active").eq("id", user.id).maybeSingle();
-        if (!alive) return;
-        if (profileError || !profile?.is_active || !canPreviewPrivacyImpact(profile.role)) {
+        if (response.status === 401 || response.status === 403) {
           setView("denied");
           return;
         }
-        const queries = await Promise.all([
-          supabase.from("client_sales").select("id", { head: true, count: "exact" }),
-          supabase.from("clients").select("id", { head: true, count: "exact" }),
-          supabase.from("daily_results").select("id", { head: true, count: "exact" }).neq("sales", 0),
-          supabase.from("client_monthly_must_targets").select("id", { head: true, count: "exact" }),
-        ]);
+        if (!response.ok) throw new Error("Unable to load impact preview");
+        const impact: PrivacyImpactSummary = await response.json();
         if (!alive) return;
-        if (queries.some((query) => query.error || query.count === null)) {
-          setView("error");
-          return;
-        }
-        setCounts({
-          clientSalesRows: queries[0].count!,
-          clientRows: queries[1].count!,
-          dailyRowsWithSales: queries[2].count!,
-          clientTargetRows: queries[3].count!,
-        });
+        setCounts(impact.counts);
         setView("ready");
       } catch {
         if (alive) setView("error");
@@ -53,7 +33,7 @@ export default function PrivacyImpactPage() {
     return () => { alive = false; };
   }, []);
 
-  const impact = counts ? summarizePrivacyImpact(counts) : null;
+  const impact = counts ? { clientTargetsRequireReview: counts.clientTargetRows > 0 } : null;
 
   return <main className="mx-auto w-full max-w-xl space-y-5 p-6">
     <Link href="/" className="underline">← ホーム</Link>
