@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import type { PrivacyImpactCounts } from "@/utils/privacy/impact";
+import { isPrivacyPreviewResponse } from "@/utils/privacy/response";
 
 type View = "loading" | "denied" | "ready" | "error";
 
@@ -22,10 +23,9 @@ export default function PrivacyImpactPage() {
           return;
         }
         if (!response.ok) throw new Error("Unable to load impact preview");
-        const impact: { counts: PrivacyImpactCounts } = await response.json();
+        const impact: unknown = await response.json();
         if (!alive) return;
-        const values = impact?.counts && Object.values(impact.counts);
-        if (!values || values.length !== 4 || values.some((value) => !Number.isSafeInteger(value) || value < 0)) {
+        if (!isPrivacyPreviewResponse(impact)) {
           throw new Error("Invalid impact response");
         }
         setCounts(impact.counts);
